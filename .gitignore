@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+host-build/
+validation/
+results/
+ran-ai-offline
+ran-ai-live
+*.o
+*.a
+*.so
+*.sqlite*
+database/import_*.sql
+
+ai/artifacts/
+# Local reports and experimental output are never published.
+rapor*.md
+report.md
+reports/
+result/
+exports/
+*.log
+*.pcap
+*.pcapng
+# Historical local walkthroughs include experiment reports/paths.
+/docs/STEP_[1-5].md
+/docs/POSTGRES_GRAFANA.md
+/examples/sample_application.csv

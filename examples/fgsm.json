@@ -1,0 +1,20 @@
+{
+  "mode": "fgsm",
+  "epsilon_db": 2,
+  "seed": 311,
+  "steps": 10,
+  "events": [
+    {
+      "id": "sinr-3",
+      "ue_imsi": 3,
+      "start_s": 1.61,
+      "end_s": 2.6
+    },
+    {
+      "id": "sinr-6",
+      "ue_imsi": 6,
+      "start_s": 1.43,
+      "end_s": 2.37
+    }
+  ]
+}

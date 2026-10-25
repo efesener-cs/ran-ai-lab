@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "algorithm": "residual_ridge",
+  "features": [
+    "sinr_mean_db",
+    "sinr_last_db",
+    "sinr_std_db",
+    "mean_change_db",
+    "last_minus_mean_db",
+    "cell_dl_tb_count",
+    "cell_dl_corrupt_fraction",
+    "cell_corrupt_fraction_missing"
+  ],
+  "horizon_s": 0.1,
+  "median": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "mean": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "scale": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "weights": [
+    0.05,
+    0.02,
+    0,
+    0.1,
+    0,
+    0,
+    0,
+    0
+  ],
+  "bias": 0,
+  "max_forecast_change_db": 6,
+  "target": "next_100ms_mean_sinr_db",
+  "network_control_enabled": false,
+  "fixture_only": true
+}
