@@ -7,7 +7,7 @@ müdahaleleri inceleyen araştırma laboratuvarı.
 - Canlı near-RT RIC, E2 ve KPM izleme hattı.
 - Sonraki 100 ms SINR tahmini için residual Ridge modeli.
 - Shadow kararları veya atomik CSV → ns-3 RRC API kontrolü.
-- Temiz, rastgele bozulma, hedefli FGSM ve PGD için eşlenmiş deneyler.
+- Eşlenmiş none/random/bias/FGSM/PGD/exact telemetri deneyleri ve persistence taban çizgisi.
 - CSV veri toplama, doğrulama, PNG/HTML görselleştirme ve PostgreSQL import üretimi.
 
 Bu bir saha kalibrasyonlu digital twin veya üretim 6G sistemi değildir.
@@ -40,10 +40,11 @@ python3 check_live.py --latest
 python3 train_ai.py
 ```
 
-Model yerelde oluşturulduktan sonra eşlenmiş canlı deney:
+Model yerelde oluşturulduktan sonra eşlenmiş canlı deney (suite en az 3 UE ister):
 
 ```bash
-python3 run_adversarial_suite.py --backend live --duration 3 --ues 6 --epsilon 2
+python3 run_adversarial_suite.py --backend live --duration 3 --ues 6 \
+  --seed 41 --run 1 --epsilon 2
 ```
 
 Tam kurulum beklentileri, eğitim, kontrol, campaign ve analiz komutları:
@@ -52,6 +53,7 @@ Tam kurulum beklentileri, eğitim, kontrol, campaign ve analiz komutları:
 ## Belgeler
 
 - [Veri sözlüğü ve veri bölme kuralları](docs/DATASET.md)
+- [Araştırma değerlendirme protokolü ve sınırlar](docs/EVALUATION.md)
 - [Kaynak/dependency provenance](docs/PROVENANCE.md)
 - [Atıflar ve lisans kapsamı](NOTICE.md)
 - [GitHub yayın hazırlığı](docs/GITHUB_PREPARATION.md)

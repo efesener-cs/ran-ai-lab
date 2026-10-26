@@ -39,10 +39,30 @@ python3 check_ai_shadow.py --latest
 
 `TEMIZ_KOSU` yerine kendi doğrulanmış, saldırısız koşunuzun dizinini yazın.
 `train_ai.py` parametresiz çalışırsa en son E2 doğrulanmış koşuyu seçer;
-seçilen koşu saldırılıysa reddeder. Ayrı test koşusu için `--test-run-dir`
-kullanın. Varsayılan aynı koşu içindeki UE bölmesi yalnız pilot içindir;
-bağımsız koşu/seed testinin yerine geçmez. Model kalitesi persistence ile
-karşılaştırılır; otomatik iyileşme varsayılmaz.
+seçilen koşu saldırılıysa reddeder. Bağımsız test protokolü ayrı run'ları açıkça
+verir:
+
+Native koşuları veri kaynağı olarak kabul etmek için açıkça `--allow-native`
+verin. Bu, live-E2 doğrulaması değildir; yalnız tamamlanmış, uygun native
+kontrol transport'lu koşuyu kabul eder. Validation alpha seçimi yalnız ayrı
+validation run'larıyla yapılır; test run'ları seçimde kullanılmaz:
+
+```bash
+python3 train_ai.py --allow-native \
+  --run-dir results/native-clean-seed41 \
+  --validation-run-dir results/native-clean-seed53 \
+  --test-run-dir results/native-clean-seed67 \
+  --alpha-grid 0.1 1 10 100 1000 \
+  --output ai/artifacts/native-seed41-val53-test67
+```
+
+Train, validation ve test seed/hash bölmeleri örtüşemez. Alpha, yalnız training
+örneklerinde fit edilir; validation MAE seçimi yapar ve final model yine sadece
+training örneklerinde seçilmiş alpha ile fit edilir. Test yalnız final raporda
+kullanılır. `--validation-run-dir` explicit `--test-run-dir` ister. Validation
+vermezseniz `--alpha` kullanılır. Varsayılan aynı koşu içindeki UE bölmesi pilot
+içindir; bağımsız koşu/seed değerlendirmesi yerine geçmez. `--allow-native`
+varsayılan kapalıdır ve run'ı live-E2 kaynağına dönüştürmez.
 
 ## Kontrol ve adversarial evasion
 
@@ -51,18 +71,35 @@ python3 run_live.py --duration 3 --ues 6 \
   --ai-model ai/artifacts/pilot/model.json --apply-ai-control
 python3 check_control.py --latest
 
-python3 run_adversarial_suite.py --backend live --duration 3 --ues 6 --epsilon 2
+python3 run_adversarial_suite.py --backend live --duration 3 --ues 6 \
+  --seed 41 --run 1 --epsilon 2 --modes none random bias fgsm pgd exact \
+  --access two_cell --predictor ridge --robust-budget-db 1 \
+  --output results/suite-seed41-epsilon2
 ```
 
-Dört koşul: none, random, fgsm, pgd. Aynı seed/run, UE, süre ve saldırı zamanları
-kullanılır. `examples/fgsm.json` ölçüm içermeyen bir saldırı girdi örneğidir.
-Hedef mevcut temiz tahminde ikinci hücreyi birincinin önüne geçirmektir;
-gelecekteki SINR kullanılmaz. FGSM tek analitik gradyan adımı, PGD rastgele
-başlangıç ve 10 projeksiyon adımı uygular. Bu modelde sonuçları aynı olabilir.
+Altı mod: none, random, bias, fgsm, pgd, exact. None zorunludur; epsilon 0 ayrı
+suite olmalıdır. Erişim `two_cell`, `target_only`, `best_only` olabilir.
+`--predictor persistence` mevcut SINR taban çizgisini suite boyunca çalıştırır.
+Suite en az 3 ve en fazla 120 UE, en az 3 saniye ister. `--output` suite
+klasörünü belirler; koşular altına `<suite-klasör-adı>-none`,
+`<suite-klasör-adı>-pgd` gibi yazılır (ör. `results/suite-seed41-epsilon2/`
+altında `suite-seed41-epsilon2-pgd`). Manifestte koşu yolları suite köküne
+göre çözülür.
+
+Hedef mevcut pencerenin tahmin sıralamasıdır; gelecekteki SINR kullanılmaz.
+PGD varsayılan 5 başlangıç ve 10 projeksiyon adımı kullanır, en iyi iteratı
+saklar. `--max-step-db` yalnız pencere içindeki bias farkını sınırlar; saldırı
+etkisiz olduğunda bias sıfırlanır ve bu global slew limiti değildir. Exact
+optimum sabit geçmiş altında tek pencerenin skor marjını çözer.
+
+`--robust-budget-db` bir-adımlı bias aralığında en kötü skor kazancı
+histerezisten düşükse handover önerisini durdurur. Model ve diğer özelliklerin
+güvenilir olduğunu varsayar; QoS ya da sonraki politika yörüngesine garanti
+vermez. Ayrıntı: [EVALUATION.md](EVALUATION.md).
 
 Aktif kontrolde otomatik handover ayarları değişir; kontrolsüz DynamicTtt
 koşusuyla doğrudan karşılaştırılmaz. Model çıkarımında simülasyon bariyeri
-bekler; gerçek inference gecikmesi ölçülmez. Kontrol API isteği ve daha sonraki
+bekler; batch işleme süresi ölçülür, fakat gerçek near-RT uçtan uca gecikme ölçülmez. Kontrol API isteği ve daha sonraki
 CONNECTED_NORMALLY/hedef hücre teyidi ayrı kaydedilir. Bu E2 RC değildir.
 
 Belirli bir koşunun doğrulanması (live olmayan koşuda check_live kullanılmaz):
@@ -74,16 +111,19 @@ python3 check_evasion.py results/KOSU
 ```
 
 `passed=true` hattın doğru çalıştığıdır; saldırı başarısı veya QoS kaybı değildir.
-Ham SINR bias bütçesiyle türetilmiş temporal fark sınırı farklıdır; geçmiş
-pencerenin etkisi saldırı bitiminden sonra bir pencere sürebilir.
+Ham SINR bias bütçesiyle türetilmiş temporal fark sınırı farklıdır. Audit
+zamanı pencere sonundaki karardır; `prior_decision_*` ise uygulama penceresi
+başlangıcına eşleşir. Missing audit ile açıkça pasif audit aynı değildir.
 
 ## Campaign, CSV ve grafikler
 
 Önce planı üretmek için:
 
 ```bash
-python3 collect_campaign.py --backend live --duration 10 --ues 24 \
-  --seeds 7 19 --epsilons 0.5 1 2 --plan-only
+python3 collect_campaign.py --backend native --duration 10 --ues 24 \
+  --seeds 41 53 67 --epsilons 0 2 --predictors ridge persistence \
+  --robust-budgets-db off 2 --modes none random bias fgsm pgd exact \
+  --access two_cell --restarts 5 --plan-only
 ```
 
 Çıktıda verilen campaign yoluyla çalıştırın/devam edin:
@@ -92,21 +132,43 @@ python3 collect_campaign.py --backend live --duration 10 --ues 24 \
 python3 collect_campaign.py --resume results/campaign-TARIH
 ```
 
-Bu plan 6 suite/24 koşudur; simülasyon saati çalışma süresi değildir.
-Tamamlanan suite'ler atlanır; yarım suite yeni attempt'te dört koşuluyla
-tekrarlanır. Loglar ve başarısız attempt'ler korunur. Tamamlanınca analiz
-`campaign/analysis/` altında otomatik oluşur.
+Bu örnek 24 suite/144 koşu planlar; simülasyon saati çalışma süresi değildir.
+Robust `off` ile `0` ayrı strata'dır: off politika savunmasını kapatır, 0 ise
+yalnız sıfır bias aralığında sertifika uygular. Access modu ve predictor da ayrı
+strata olarak raporlanır. Tamamlanan suite'ler atlanır; yarım suite yeni
+attempt'te seçili modlarıyla tekrarlanır. Eski planlarda `modes` alanı yoksa
+resume dört eski modu (none, random, fgsm, pgd) kullanır. Loglar ve başarısız
+attempt'ler korunur. Tamamlanınca `analysis/` ve `statistics/` otomatik üretilir.
 
 Mevcut suite'leri ayrıca analiz etmek için:
 
 ```bash
 python3 analyze_experiments.py results/SUITE --output results/analysis-local
 xdg-open results/analysis-local/index.html
+python3 summarize_campaign.py results/analysis-local/run_summary.csv \
+  --output results/analysis-local/statistics
+python3 evaluate_replay.py --model ai/artifacts/native-seed41-val53-test67/model.json \
+  --run-dir results/native-clean-seed67 --allow-native --epsilon 2 \
+  --access two_cell --robust-budget-db 1 --output results/replay-seed67
 ```
 
 Birden çok suite argümanı verilebilir. Native/live ve farklı UE/süre
 konfigürasyonları ayrı değerlendirilir. Uygulama CSV'si goodput içindir;
 radyo CSV'sindeki uygulama değerleri dört hücrede tekrarlanır.
+Kampanya özeti clean-paired RX farkı ve seed-cluster bootstrap raporlar; tek
+seed için güven aralığı üretmez. AML aynı-window alanları audit penceresini,
+`prior_decision_*` uygulama başlangıcındaki kararı gösterir; teyit zamanı tüm
+pencere boyunca serving-cell kanıtı değildir. İstatistik için en az iki
+bağımsız seed kümesi gerekir; aynı seed içindeki tekrarlar bağımsız örnek sayılmaz.
+
+`evaluate_replay.py` kayıtlı temiz telemetriyi bellekte perturb ederek ridge ve
+persistence modellerini altı modda ayrı ayrı inceler. Bölme provenance'ı
+varsayılan doğrulanır; yalnız provenance eksik eski modelde açıkça
+`--allow-unverified-split` verilebilir. `--allow-native` native kaynaklara izin
+verir. Etiket/ground truth temiz ölçülmüş sonraki pencere SINR'ıdır; model girdisi
+sentetik olarak değişir, ölçülmüş trafik veya radyo durumu değişmez. Replay,
+nedensel QoS/throughput etkisi ya da handover başarısı ölçmez ve ağ kontrolü
+uygulamaz. Çıktı `replay_metrics.csv` ve `replay_metrics.json` üretir.
 Ayrıntılı alanlar ve sızıntısız train/test bölmesi: [DATASET.md](DATASET.md).
 
 ## PostgreSQL ve Grafana

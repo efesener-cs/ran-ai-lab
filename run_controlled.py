@@ -15,10 +15,13 @@ p.add_argument('--warmup',type=float,default=1.0)
 p.add_argument('--seed',type=int,default=7)
 p.add_argument('--run',type=int,default=1)
 p.add_argument('--evasion-config',type=Path)
+p.add_argument('--output',type=Path,help='Run output directory (must not already exist)')
 a=p.parse_args();lab=Path(__file__).resolve().parent
 model=a.model or lab/'ai/artifacts/pilot/model.json'
-root=lab/'results'/('control-native-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
-raw=root/'raw';raw.mkdir(parents=True)
+root=a.output.resolve() if a.output else lab/'results'/('control-native-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+if a.output:
+    root.mkdir(parents=True,exist_ok=False)
+raw=root/'raw';raw.mkdir(parents=True,exist_ok=False)
 stop=raw/'ai_shadow.stop'
 status=dict(status='running',live_ric_verified=False,ai_control_enabled=True,
             control_transport='atomic CSV to ns-3 RRC API; no E2 RC',
@@ -41,8 +44,12 @@ try:
     (root/'run_status.json').write_text(json.dumps(status,indent=2)+'\n')
     from check_control import verify
     result=verify(root,require_live=False)
-    if not result['passed']:raise RuntimeError('Control evidence incomplete')
-    status['ai_control_verified_native']=True
+    if not result['infrastructure_valid']:raise RuntimeError('Control evidence is malformed or infrastructure-invalid')
+    status['ai_control_infrastructure_valid']=True
+    status['control_outcomes']=result['control_outcomes']
+    # A run may be healthy with no submissions or with an unconfirmed handover.
+    # Never record those scientific outcomes as verified control success.
+    status['ai_control_verified_native']=bool(result['submitted']) and result['confirmed']==result['submitted']
 except BaseException as exc:
     status.update(status='failed',error=str(exc));raise
 finally:

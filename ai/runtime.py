@@ -14,6 +14,9 @@ class RuntimeForecaster:
             if len(parameters[key])!=size or not all(math.isfinite(float(v)) for v in parameters[key]):
                 raise ValueError('Invalid model vector: '+key)
         if not all(v>0 for v in parameters['scale']):raise ValueError('Invalid feature scales')
+        for name in ['bias','max_forecast_change_db']:
+            if not math.isfinite(float(parameters[name])):raise ValueError('Invalid model scalar: '+name)
+        if parameters['max_forecast_change_db']<0:raise ValueError('Invalid forecast clipping limit')
         if parameters['features']!=['sinr_mean_db','sinr_last_db','sinr_std_db','mean_change_db',
             'last_minus_mean_db','cell_dl_tb_count','cell_dl_corrupt_fraction','cell_corrupt_fraction_missing']:
             raise ValueError('Feature order mismatch')
@@ -22,8 +25,10 @@ class RuntimeForecaster:
     def load(cls,path):return cls(json.loads(Path(path).read_text()))
 
     def predict(self,x,current):
+        if len(x)!=len(current):raise ValueError('Feature/current batch lengths differ')
         p=self.parameters;result=[]
         for row,base in zip(x,current):
+            if not math.isfinite(float(base)):raise ValueError('Nonfinite current SINR')
             if len(row)!=len(p['features']):raise ValueError('Feature width mismatch')
             total=p['bias']
             for i,value in enumerate(row):

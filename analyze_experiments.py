@@ -31,6 +31,15 @@ def write(path,rows):
         writer=csv.DictWriter(stream,fieldnames=fields);writer.writeheader();writer.writerows(rows)
 
 
+def resolve_run_path(suite, value):
+    path=Path(value)
+    if path.is_absolute():return path
+    inside=(suite/path).resolve()
+    if inside.exists():return inside
+    # Existing campaign manifests sometimes store paths relative to the suite parent.
+    return (suite.parent/path).resolve()
+
+
 def application_metrics(rows,ues,duration):
     expected={(tick,str(ue)) for tick in range(1,round(duration*10)+1) for ue in range(1,ues+1)}
     observed=set()
@@ -56,21 +65,35 @@ def analyze(suites,output):
     output.mkdir(parents=True,exist_ok=True)
     radio_path=output/'radio_dataset.csv';radio_path.write_text('')
     applications=[];radio_count=0;summaries=[];gaps=[];seen=set();provenance=[]
+    critical_sources=['ai/runtime.py','ai/evasion.py','ai/robust.py','ai/policy.py','ai/stream.py','shadow_stream.py','ran-ai-scenario.cc']
     for suite in suites:
         manifest=json.loads((suite/'manifest.json').read_text());config=manifest['configuration']
-        if set(manifest['runs'])!=set(MODES):raise ValueError('Incomplete suite: '+str(suite))
-        for mode in MODES:
-            run=Path(manifest['runs'][mode]);status=json.loads((run/'run_status.json').read_text())
+        source_hashes=manifest.get('source_sha256',{})
+        pipeline={name:source_hashes.get(name,'unrecorded') for name in critical_sources}
+        pipeline['native_binary']=manifest.get('simulation_binary_sha256','unrecorded')
+        pipeline['container_image']=manifest.get('environment',{}).get('container_image_id','unrecorded')
+        pipeline_hash=hashlib.sha256(json.dumps(pipeline,sort_keys=True).encode()).hexdigest() if source_hashes else 'unrecorded'
+        modes=config.get('modes', MODES)
+        if not isinstance(modes,list) or not modes or len(set(modes))!=len(modes) or 'none' not in modes:
+            raise ValueError('Suite configuration modes must be a unique list containing none: '+str(suite))
+        if set(manifest['runs'])!=set(modes):raise ValueError('Incomplete suite: '+str(suite))
+        for mode in modes:
+            run=resolve_run_path(suite,manifest['runs'][mode])
+            status=json.loads((run/'run_status.json').read_text())
             if run.name in seen:raise ValueError('Duplicate run across suites: '+run.name)
             seen.add(run.name)
             if config['backend']=='live' and not check(run)['passed']:raise ValueError('Live E2 check failed: '+str(run))
             control=control_verify(run,require_live=config['backend']=='live');evasion=verify(run)
-            if status['status']!='complete' or not control['passed'] or not evasion['passed']:raise ValueError('Run validation failed: '+str(run))
+            # Control submission/confirmation is a scientific outcome. Only infrastructure validity
+            # gates inclusion; a completed run with handover failures remains informative.
+            if status['status']!='complete' or not control['infrastructure_valid'] or not evasion['passed']:raise ValueError('Run validation failed: '+str(run))
             model_hash=json.loads((run/'csv/ai_shadow_status.json').read_text())['model_sha256']
             if model_hash!=manifest['model_sha256']:raise ValueError('Model hash differs from suite manifest')
-            tags=dict(suite_id=suite.name,backend=config['backend'],experiment_condition=mode,
+            tags=dict(run_id=run.name,suite_id=suite.name,backend=config['backend'],experiment_condition=mode,
                       experiment_seed=config['seed'],experiment_run=config['run'],epsilon_db=config['epsilon'],
-                      model_sha256=model_hash)
+                      model_sha256=model_hash,experiment_pipeline_sha256=pipeline_hash,predictor=config.get('predictor','ridge'),
+                      robust_budget_db=config.get('robust_budget_db',''),
+                      attack_access=config.get('access','two_cell'))
             audit=read(run/'csv/ai_shadow_attack_audit.csv');flags=defaultdict(lambda:[0,0])
             group=defaultdict(list)
             for row in audit:
@@ -85,13 +108,34 @@ def analyze(suites,output):
                     clean_gap_db=float(best['clean_prediction_db'])-float(target['clean_prediction_db']),
                     observed_gap_db=float(best['observed_prediction_db'])-float(target['observed_prediction_db'])))
             apps=read(run/'csv/ue_application_100ms.csv');enriched=[]
+            decisions=read(run/'csv/ai_shadow_decisions.csv')
+            decision_by_start={(round(float(d['decision_time_s']),8),d['ue_imsi']):d for d in decisions}
+            control_by_decision={}
+            for request in control['requests']:
+                dkey=(round(float(request['request_time_s']),8),request['ue_imsi'],request['target_cell'])
+                control_by_decision[dkey]=request
             keys=set()
             for row in apps:
                 key=(round(float(row['window_end_s'])*10),row['ue_imsi'])
                 if key in keys:raise ValueError('Duplicate application window')
                 keys.add(key)
+                audit_available=int(key in flags)
                 active,affected=flags[key]
-                enriched.append(dict(row,**tags,aml_event_active=active,aml_input_perturbed=affected))
+                # Same-window AML flags describe observed/input telemetry. The prior-decision labels
+                # align with a decision made at the application window start; a later confirmation
+                # is an event timestamp, not proof that the target was used throughout this window.
+                decision_time=round(float(row['window_start_s']),8)
+                decision=decision_by_start.get((decision_time,row['ue_imsi']))
+                decision_action=decision.get('action','') if decision else ''
+                request=control_by_decision.get((decision_time,row['ue_imsi'],str(decision.get('recommended_cell_id',''))),{}) if decision else {}
+                enriched.append(dict(row,**tags,aml_event_active=active,aml_input_perturbed=affected,
+                    aml_input_audit_available=audit_available,
+                    aml_input_event_active_same_window=active,aml_input_perturbed_same_window=affected,
+                    prior_decision_time_s=(decision_time if decision else ''),
+                    prior_decision_action=decision_action,
+                    prior_decision_control_submitted=int(bool(request)),
+                    prior_decision_target_connected_confirmed=int(bool(request.get('confirmed',False))),
+                    prior_decision_confirmation_time_s=request.get('confirmation_time_s') or ''))
             applications.extend(enriched)
             measured=read(run/'csv/adversarial_dataset.csv')
             radio_keys={(r['window_end_s'],r['ue_imsi'],r['nr_cell_id']) for r in measured}
@@ -108,8 +152,15 @@ def analyze(suites,output):
                 aggregate_goodput_mbps=goodput,
                 targeted_rank_hits=evasion['targeted_rank_hits'],targeted_rank_trials=evasion['targeted_rank_trials'],
                 action_changes=evasion['action_changes'],command_changes=evasion['executable_command_changes'],
-                affected_ue_windows=evasion['affected_ue_windows'],control_submitted=control['submitted'],control_confirmed=control['confirmed']))
-            provenance.append(dict(run_id=run.name,source=str(run),application_sha256=hashlib.sha256((run/'csv/ue_application_100ms.csv').read_bytes()).hexdigest()))
+                affected_ue_windows=evasion['affected_ue_windows'],
+                control_infrastructure_valid=control['infrastructure_valid'],
+                control_submitted=control['submitted'],control_confirmed=control['confirmed'],
+                control_unconfirmed=control['unconfirmed'],control_rejected=control['rejected'],
+                control_outcome=control['control_outcomes']['outcome'],
+                control_status=('verified' if control['submitted'] and control['confirmed']==control['submitted'] else 'not_verified')))
+            provenance.append(dict(run_id=run.name,source=str(run),experiment_pipeline_sha256=pipeline_hash,
+                recorded_source_sha256=source_hashes,simulation_binary_sha256=manifest.get('simulation_binary_sha256'),
+                environment=manifest.get('environment',{}),application_sha256=hashlib.sha256((run/'csv/ue_application_100ms.csv').read_bytes()).hexdigest()))
     for row in summaries:
         clean=next(r for r in summaries if r['suite_id']==row['suite_id'] and r['experiment_condition']=='none')
         row['rx_delta_vs_paired_clean']=row['rx_bytes']-clean['rx_bytes']
@@ -126,7 +177,9 @@ def analyze(suites,output):
         for suite_id in sorted({r['suite_id'] for r in summaries if r['backend']==backend}):
             selected=[r for r in applications if r['suite_id']==suite_id];label=backend+'-'+suite_id
             fig,axes=plt.subplots(2,1,figsize=(10,7),layout='constrained')
-            for mode in MODES:
+            suite_manifest=json.loads((next(s for s in suites if s.name==suite_id)/'manifest.json').read_text())
+            suite_modes=suite_manifest['configuration'].get('modes', MODES)
+            for mode in suite_modes:
                 ticks=defaultdict(float)
                 for r in selected:
                     if r['experiment_condition']==mode and r['is_warmup']=='0':ticks[float(r['window_end_s'])]+=float(r['app_goodput_mbps'])
@@ -140,7 +193,12 @@ def analyze(suites,output):
             name=label+'-goodput.png';fig.savefig(output/name,dpi=150);plt.close(fig);pictures.append(name)
             raw_suite=next(s for s in suites if s.name==suite_id)
             raw_manifest=json.loads((raw_suite/'manifest.json').read_text())
-            fgsm=read(Path(raw_manifest['runs']['fgsm'])/'csv/ai_shadow_attack_audit.csv')
+            if 'fgsm' not in raw_manifest['runs']:
+                fgsm=[]
+            else:
+                fgsm_run=Path(raw_manifest['runs']['fgsm'])
+                fgsm_run=resolve_run_path(raw_suite,fgsm_run)
+                fgsm=read(fgsm_run/'csv/ai_shadow_attack_audit.csv')
             attacked=sorted({r['ue_imsi'] for r in fgsm if r['event_active']=='1'},key=int)
             if attacked:
                 ue=attacked[0];values=[r for r in fgsm if r['ue_imsi']==ue]
@@ -156,7 +214,7 @@ def analyze(suites,output):
             subg=[r for r in gaps if r['suite_id']==suite_id]
             if subg:
                 fig,ax=plt.subplots(figsize=(7,5),layout='constrained')
-                for mode in MODES[1:]:
+                for mode in [m for m in suite_modes if m!='none']:
                     values=[r for r in subg if r['experiment_condition']==mode]
                     ax.scatter([r['clean_gap_db'] for r in values],[r['observed_gap_db'] for r in values],label=mode,alpha=.65)
                 span=[r['clean_gap_db'] for r in subg]+[r['observed_gap_db'] for r in subg]

@@ -38,7 +38,8 @@ class MetricsTests(unittest.TestCase):
             state=json.loads(file.read_text());self.assertEqual(state['jobs'][1]['status'],'failed')
             self.assertEqual(len(state['jobs'][1]['attempts']),1)
             with patch('sys.argv',argv),patch('collect_campaign.subprocess.run') as run:
-                collect_campaign.main();self.assertEqual(run.call_count,2)
+                collect_campaign.main();self.assertEqual(run.call_count,3)
+                self.assertIn('summarize_campaign.py',run.call_args_list[-1].args[0][1])
             state=json.loads(file.read_text());self.assertEqual(state['jobs'][1]['status'],'complete')
             self.assertEqual(len(state['jobs'][1]['attempts']),2)
 

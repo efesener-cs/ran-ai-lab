@@ -30,18 +30,20 @@ def main():
     model=RuntimeForecaster.load(a.model);reader=Telemetry(a.raw_dir,a.run_id,a.ues)
     attack_config=json.loads(a.evasion_config.read_text()) if a.evasion_config else {'mode':'none','epsilon_db':0,'events':[]}
     engine=Evasion(model,attack_config)
+    robust_budget=attack_config.get('robust_budget_db')
     a.output.mkdir(parents=True,exist_ok=True)
     (a.output/'evasion_config.json').write_text(json.dumps(attack_config,indent=2)+'\n')
     # Maintain recommendation cooldown across closed-window batches.
-    reference_state={};policy_state={};emitted=set();count=0;writers={};streams=[]
+    reference_state={};policy_state={};emitted=set();count=0;writers={};streams=[];processing_ms=[]
     try:
         while True:
             # Snapshot completion before polling so the final flush is always drained.
             finished=a.replay or a.stop_file.exists()
             batch=reader.poll()
-            reference,_=recommendations(model,batch,state=reference_state)
+            processing_start=time.perf_counter()
+            reference,_=recommendations(model,batch,state=reference_state,robust_budget_db=robust_budget)
             observed,audit=engine.transform(batch)
-            decisions,scores=recommendations(model,observed,state=policy_state)
+            decisions,scores=recommendations(model,observed,state=policy_state,robust_budget_db=robust_budget)
             new=[r for r in decisions if (r['ue_imsi'],r['decision_time_s']) not in emitted]
             if a.apply_control:
                 for row in new:row['network_action_applied']=''
@@ -68,6 +70,7 @@ def main():
                     os.replace(temp,dest)
             emitted.update((r['ue_imsi'],r['decision_time_s']) for r in new);count+=len(new)
             for stream in streams:stream.flush()
+            if batch:processing_ms.append((time.perf_counter()-processing_start)*1000)
             if finished:break
             time.sleep(0.05)
         if count==0:raise RuntimeError('AI shadow process produced no complete-window recommendations')
@@ -76,7 +79,12 @@ def main():
             path=a.raw_dir/'control_events.csv'
             if path.exists():
                 with path.open() as stream:applied=sum(r['event']=='confirmed_target_connected' for r in csv.DictReader(stream))
-        summary=dict(status='complete',decision_count=count,network_actions_applied=applied,
+        durations=sorted(processing_ms)
+        timing=dict(samples=len(durations),mean_ms=sum(durations)/len(durations) if durations else None,
+            p95_ms=durations[min(len(durations)-1,int(.95*len(durations)))] if durations else None,
+            max_ms=max(durations) if durations else None,
+            scope='Wall-clock batch processing after poll, including attack/reference/observed policy and CSV publication; excludes telemetry generation/poll wait and RRC confirmation; not end-to-end near-RT latency')
+        summary=dict(batch_processing=timing,status='complete',decision_count=count,network_actions_applied=applied,
                      model_sha256=hashlib.sha256(a.model.read_bytes()).hexdigest(),
                      mode='completed-trace replay' if a.replay else 'concurrent control bridge' if a.apply_control else 'concurrent shadow process',
                      control_transport='atomic CSV to ns-3 RRC API' if a.apply_control else 'none',

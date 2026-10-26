@@ -17,11 +17,18 @@ def lines(path):
                 yield line.split()
 
 
-def write_csv(path, rows):
-    if not rows:
+BEARER_FIELDS = [
+    'run_id', 'layer', 'interval_start_s', 'interval_end_s', 'cell_id', 'ue_imsi',
+    'rnti', 'lcid', 'tx_pdus', 'tx_bytes', 'rx_pdus', 'rx_bytes', 'rx_mbps',
+    'delay_mean_s', 'delay_std_s', 'delay_min_s', 'delay_max_s',
+]
+
+
+def write_csv(path, rows, fieldnames=None):
+    if not rows and fieldnames is None:
         raise ValueError(f'No rows for {path}')
     with path.open('w', newline='') as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(stream, fieldnames=fieldnames or list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
 
@@ -113,7 +120,7 @@ def main():
                 rx_mbps=int(r[9])*8/(end-start)/1e6,
                 delay_mean_s=float(r[10]), delay_std_s=float(r[11]),
                 delay_min_s=float(r[12]), delay_max_s=float(r[13])))
-    write_csv(out / 'bearer_intervals.csv', bearer)
+    write_csv(out / 'bearer_intervals.csv', bearer, BEARER_FIELDS)
     summary = dict(row_unit='UE x measured NR cell x time window',
         window_ms=args.window_ms, duration_s=args.duration_s,
         rows=len(rows), columns=len(rows[0]), ues=len(ues), nr_cells=len(cells),
@@ -121,14 +128,16 @@ def main():
         sinr_output_samples=sum(r['sinr_sample_count'] for r in rows),
         missing_sinr_rows=sum(r['sinr_sample_count'] == 0 for r in rows),
         bearer_rows=len(bearer),
+        bearer_intervals_available=True,
+        bearer_intervals_by_layer={layer: sum(r['layer'] == layer for r in bearer) for layer in ('pdcp', 'rlc')},
         missing_values={k:sum(r[k] == '' for r in rows) for k in rows[0]},
         source_sha256={name:hashlib.sha256((root/name).read_bytes()).hexdigest()
             for name in ['MmWaveSinrTime.txt','RxPacketTrace.txt','CellIdStats.txt','DlPdcpStats.txt','DlRlcStats.txt']},
         caveats=['Cell PHY features repeat across UEs; they are cell context, not UE throughput.',
                  'Last recorded path is event-derived, not a complete serving-cell history.',
                  'Successful TB rate is not application goodput; retransmissions may be counted.',
-                 'No attack was executed. Labels describe this baseline run only.',
-                 'Two-second pilot includes startup; not a training-ready dataset.'])
+                 'Attack status is not inferred from raw traces; consult the experiment schedule and model-input audit.',
+                 'Trace windows alone do not establish independent training/validation/test populations.'])
     assert summary['sinr_input_samples'] == summary['sinr_output_samples']
     (out / 'quality_report.json').write_text(json.dumps(summary, indent=2)+'\n')
     print(json.dumps({k:summary[k] for k in ['rows','columns','ues','nr_cells','sinr_input_samples','missing_sinr_rows','bearer_rows']},indent=2))

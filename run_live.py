@@ -9,6 +9,7 @@ import json
 
 p=argparse.ArgumentParser()
 p.add_argument('--container',default='flexric')
+p.add_argument('--output',type=Path)
 p.add_argument('--ai-model',type=Path)
 p.add_argument('--evasion-config',type=Path)
 p.add_argument('--apply-ai-control',action='store_true')
@@ -19,9 +20,12 @@ if args.apply_ai_control and args.ai_model is None:p.error('--apply-ai-control r
 if args.apply_ai_control:extra+=['--apply-ai-control']
 if args.ai_model is not None and not args.ai_model.is_file():
     p.error('AI model file not found: '+str(args.ai_model))
-run_id='live-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+run_id=args.output.resolve().name if args.output else 'live-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+if not run_id or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in run_id):
+    p.error('Output directory name must contain only letters, numbers, hyphens and underscores')
 remote='/tmp/ran-ai-'+run_id
-out=lab/'results'/run_id
+out=args.output.resolve() if args.output else lab/'results'/run_id
+if out.exists():p.error('Output directory already exists: '+str(out))
 # Check before making a run folder; no sudo or permissions changes.
 try:
     state=subprocess.check_output(['docker','inspect','-f','{{.State.Running}}',args.container],text=True).strip()
@@ -33,7 +37,7 @@ for name in ['container_run.py','check_control.py','check_live.py','ric_address.
     subprocess.run(['docker','cp',str(lab/name),args.container+':'+remote+'/'+name],check=True)
 if args.ai_model is not None:
     subprocess.run(['docker','exec',args.container,'mkdir','-p',remote+'/ai'],check=True)
-    for name in ['__init__.py','runtime.py','policy.py','stream.py','evasion.py']:
+    for name in ['__init__.py','runtime.py','policy.py','stream.py','evasion.py','robust.py']:
         subprocess.run(['docker','cp',str(lab/'ai'/name),args.container+':'+remote+'/ai/'+name],check=True)
     subprocess.run(['docker','cp',str(lab/'shadow_stream.py'),args.container+':'+remote+'/shadow_stream.py'],check=True)
     subprocess.run(['docker','cp',str(args.ai_model),args.container+':'+remote+'/model.json'],check=True)

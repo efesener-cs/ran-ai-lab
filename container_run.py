@@ -232,8 +232,13 @@ def main():
         if args.apply_ai_control:
             from check_control import verify
             control_result=verify(result,require_live=True)
-            if not control_result['passed']:raise RuntimeError('Control evidence incomplete; inspect control_verification.json')
-            status['ai_control_verified']=True;save()
+            if not control_result['infrastructure_valid']:
+                raise RuntimeError('Control evidence is malformed or infrastructure-invalid; inspect control_verification.json')
+            status['ai_control_infrastructure_valid']=True
+            status['control_outcomes']=control_result['control_outcomes']
+            # A later connected-target event is a timestamped outcome, not whole-window application.
+            status['ai_control_verified']=bool(control_result['submitted']) and control_result['confirmed']==control_result['submitted']
+            save()
         print('E2 setup + decoded KPM indications verified; CSV exported.',flush=True)
     except BaseException as exc:
         status.update(status='failed',error=str(exc));save()

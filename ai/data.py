@@ -14,11 +14,17 @@ def number(row,key):
     except (KeyError,ValueError,TypeError):return float('nan')
 
 
-def load_observations(root,require_clean=True):
+def load_observations(root,require_clean=True,allow_native=False):
     root=Path(root).resolve()
     status=json.loads((root/'run_status.json').read_text())
-    if status.get('status')!='complete' or not status.get('live_ric_verified'):
-        raise ValueError('AI pilot requires a completed, live-E2-verified run: '+str(root))
+    if status.get('status')!='complete' or status.get('simulation_exit_code')!=0:
+        raise ValueError('AI pilot requires a completed run with simulation exit code zero: '+str(root))
+    if status.get('live_ric_verified') is True:
+        backend='live'
+    elif allow_native and status.get('control_transport','').startswith('atomic CSV to ns-3 RRC API') and status.get('ai_control_enabled') is True:
+        backend='native'
+    else:
+        raise ValueError('Run must be live-E2-verified; native runs require --allow-native and verified native control transport: '+str(root))
     evasion=root/'csv/evasion_config.json'
     if require_clean and evasion.exists() and json.loads(evasion.read_text()).get('mode','none')!='none':
         raise ValueError('Training baseline must not contain telemetry evasion')
@@ -30,7 +36,7 @@ def load_observations(root,require_clean=True):
     for r in rows:
         if r['run_id']!=root.name:raise ValueError('Noncanonical run_id; regenerate CSV with export_dataset.py')
         start,end=number(r,'window_start_s'),number(r,'window_end_s')
-        if not math.isfinite(start) or abs(end-start-0.1)>1e-7:
+        if not math.isfinite(start) or not math.isfinite(end) or start<0 or abs(start*10-round(start*10))>1e-7 or abs(end-start-0.1)>1e-7:
             raise ValueError('Only contiguous 100ms windows are supported')
         key=(int(r['ue_imsi']),int(r['nr_cell_id']))
         tick=round(start*10)
@@ -56,7 +62,11 @@ def load_observations(root,require_clean=True):
     metadata=dict(run_id=root.name,source_csv='csv/ran_features_100ms.csv',
                   sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                   configuration=status.get('configuration',{}),
-                  feature_source='ns-3 radio trace CSV from verified E2 run; not live xApp inference')
+                  seed=(status.get('configuration') or {}).get('seed'),
+                  backend=backend,
+                  feature_source=('ns-3 radio trace CSV from verified E2 run; not live xApp inference'
+                                  if backend == 'live' else
+                                  'ns-3 native control run radio trace CSV; not E2 or live xApp inference'))
     return observations,metadata
 
 
