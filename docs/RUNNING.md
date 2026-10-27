@@ -3,6 +3,10 @@
 Komutlar depo kökünde çalıştırılır. Sonuçlar ve raporlar yerelde üretilir;
 GitHub'dan clone edilen depoda model, binary veya ölçüm verisi bulunmaz.
 
+Tam container kurulumu ve bağımsız veri/eğitim/campaign komutları:
+[CONTAINERS.md](CONTAINERS.md). Aşağıdaki host kurulum beklentileri eski native
+ve hazırlanmış `flexric` container yolları içindir.
+
 ## Bağımlılıklar
 
 - Python 3.10+, `requirements-ai.txt`, `requirements-analysis.txt`.

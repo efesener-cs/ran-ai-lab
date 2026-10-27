@@ -6,6 +6,7 @@ from datetime import datetime
 import hashlib
 import importlib.metadata
 import math
+import os
 from decimal import Decimal
 import json
 from pathlib import Path
@@ -95,10 +96,17 @@ def main():
     manifest['source_sha256'] = {str(path.relative_to(lab)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(sources)}
     if a.backend == 'native':
         manifest['simulation_binary_sha256'] = hashlib.sha256((lab / 'ran-ai-offline').read_bytes()).hexdigest()
+    elif os.environ.get('RAN_AI_IN_CONTAINER') == '1':
+        image_id = os.environ.get('RAN_AI_IMAGE_ID')
+        if not image_id:
+            p.error('Use docker/lab.sh to record the live container image identity')
+        manifest['environment']['container_image_id'] = image_id
     else:
         manifest['environment']['container_image_id'] = subprocess.check_output(
             ['docker', 'inspect', '--format', '{{.Image}}', 'flexric'], text=True).strip()
     manifest['environment']['packages']={}
+    if os.environ.get('RAN_AI_IMAGE_ID'):
+        manifest['environment']['container_image_id'] = os.environ['RAN_AI_IMAGE_ID']
     for package in ['numpy','matplotlib']:
         try:manifest['environment']['packages'][package]=importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:manifest['environment']['packages'][package]=None

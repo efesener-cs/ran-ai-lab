@@ -18,6 +18,11 @@ Tahmin/sıralama değişimi, gerçek kontrol teyidi ve QoS etkisi ayrı ölçül
 
 ## Başlangıç
 
+Hostta ns-3/Python kurmadan, veri üretiminden campaign analizine kadar çalıştırmak
+için [container tekrar üretim kılavuzunu](docs/CONTAINERS.md) kullanın.
+`Dockerfile` ayrı `native` ve `live` hedefleri sağlar; mevcut hazırlanmış container
+gerektiren aşağıdaki yol da desteklenir.
+
 Python 3.10+, NumPy ve analiz için matplotlib gerekir. Simülasyon ayrıca
 uyumlu ve önceden derlenmiş ns-3/O-RAN, FlexRIC ve e2sim bağımlılıkları ister.
 Bunlar depoda bulunmaz; standart bir Ubuntu container'ı yeterli değildir.
