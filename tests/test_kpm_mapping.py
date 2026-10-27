@@ -3,12 +3,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from portable_build import select_compilers
-from kpm_fixes import patch_sender
+from labcore.portable_build import select_compilers
+from labcore.kpm_fixes import patch_sender
 
 class MappingTests(unittest.TestCase):
     def test_single_sample_preserves_scalar_order_and_marks_compound_missing(self):
-        lab=Path(__file__).resolve().parent
+        lab=Path(__file__).resolve().parents[1]
         source_path=lab.parent/'ns-O-RAN-flexric/mmwave-LENA-oran/contrib/oran-interface/model/kpm-indication.cc'
         if not source_path.is_file():self.skipTest('External ns-3/O-RAN source tree is not installed')
         source=source_path.read_text()

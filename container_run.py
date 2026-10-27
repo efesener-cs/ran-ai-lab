@@ -12,10 +12,10 @@ import socket
 import subprocess
 import sys
 import time
-from kpm_fixes import sender_override, patch_monitor
-from ric_address import reserve_address
-from discover_sources import discover
-from portable_build import configure_flexric, relocate_headers, select_compilers, shared_library_args
+from labcore.kpm_fixes import sender_override, patch_monitor
+from labcore.ric_address import reserve_address
+from labcore.discover_sources import discover
+from labcore.portable_build import configure_flexric, relocate_headers, select_compilers, shared_library_args
 
 
 def cache_values(path):

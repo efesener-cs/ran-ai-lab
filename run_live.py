@@ -33,8 +33,9 @@ except subprocess.CalledProcessError:
     sys.exit('Docker access failed. Run this command in your normal host terminal.')
 if state!='true':subprocess.run(['docker','start',args.container],check=True)
 subprocess.run(['docker','exec',args.container,'mkdir','-p',remote],check=True)
-for name in ['container_run.py','check_control.py','check_live.py','ric_address.py','kpm_fixes.py','discover_sources.py','portable_build.py','experiment_plan.py','export_dataset.py','build_csv.py','ran-ai-scenario.cc']:
+for name in ['container_run.py','check_control.py','check_live.py','export_dataset.py','build_csv.py','ran-ai-scenario.cc']:
     subprocess.run(['docker','cp',str(lab/name),args.container+':'+remote+'/'+name],check=True)
+subprocess.run(['docker','cp',str(lab/'labcore'),args.container+':'+remote+'/labcore'],check=True)
 if args.ai_model is not None:
     subprocess.run(['docker','exec',args.container,'mkdir','-p',remote+'/ai'],check=True)
     for name in ['__init__.py','runtime.py','policy.py','stream.py','evasion.py','robust.py']:

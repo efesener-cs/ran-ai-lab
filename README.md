@@ -57,10 +57,22 @@ Tam kurulum beklentileri, eğitim, kontrol, campaign ve analiz komutları:
 - [Kaynak/dependency provenance](docs/PROVENANCE.md)
 - [Atıflar ve lisans kapsamı](NOTICE.md)
 - [GitHub yayın hazırlığı](docs/GITHUB_PREPARATION.md)
-- [Araştırma kaynakları](RESEARCH.md)
+- [Araştırma kaynakları](docs/RESEARCH.md)
 
-`rapor.md`, deney sonuçları, gerçek örnek CSV, eğitilmiş modeller, loglar,
+`reports/rapor.md`, deney sonuçları, gerçek örnek CSV, eğitilmiş modeller, loglar,
 binary'ler ve üretilmiş SQL dosyaları Git dışında tutulur. Yerelde üretilecek
 CSV/grafik/rapor yolları komut çıktısında gösterilir; sonuçlar depoyla dağıtılmaz.
 Upstream lisansları korunmuştur; yeni kaynaklar için repository çapında lisans
 henüz seçilmemiştir. Ayrıntı: [NOTICE.md](NOTICE.md).
+
+## Dizin yapısı
+
+- Kök dizindeki CLI betikleri: çalıştırma, eğitim, veri dışa aktarma ve analiz komutları.
+- `ai/`: model, telemetri, politika ve adversarial saldırı mantığı.
+- `labcore/`: ortak kaynak keşfi, derleme, senaryo ve deney yardımcıları.
+- `tests/`: birim testleri ve sentetik fixture dosyaları.
+- `docs/`: çalıştırma kılavuzları ve araştırma kaynakları.
+- `database/`, `examples/`, `scripts/`: SQL, örnek ayarlar ve yayın kontrolü.
+- `results/`, `reports/`, `exports/`, `validation/`, `host-build/`: Git dışında tutulan yerel çıktılar.
+
+Mevcut CLI komutları ve kökten test keşfi komutu değişmemiştir.

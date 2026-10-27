@@ -1,7 +1,7 @@
 # GitHub yayın hazırlığı
 
 Bu depo yalnız kaynak, test, çalışma yönergeleri, girdi örneği ve atıfları içerir.
-`rapor.md`, `results/`, ölçüm örnek CSV'si, yerel deney notları, modeller,
+`reports/rapor.md`, `results/`, ölçüm örnek CSV'si, yerel deney notları, modeller,
 loglar, build ürünleri ve üretilmiş import dosyaları `.gitignore` ile dışlanır.
 Gerçek deney sonuçları yayınlanmaz. `tests/fixtures/model.json` elle yazılmış
 sentetik birim test girdisidir; eğitilmiş model değildir.

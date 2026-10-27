@@ -85,7 +85,7 @@ endforeach()
 def relocate_headers(source, dest):
     """Copy generated forwarding headers, rewriting only the cached source prefix."""
     source, dest = Path(source).resolve(), Path(dest)
-    from discover_sources import cache_values
+    from labcore.discover_sources import cache_values
     cache = source/'cmake-cache/CMakeCache.txt'
     old = cache_values(cache).get('CMAKE_HOME_DIRECTORY', str(source))
     dest.mkdir(parents=True, exist_ok=True)

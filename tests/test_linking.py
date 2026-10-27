@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from portable_build import shared_library_args, select_compilers
+from labcore.portable_build import shared_library_args, select_compilers
 
 class LinkingTests(unittest.TestCase):
     def test_early_library_is_kept_for_late_dependency(self):

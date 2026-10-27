@@ -135,9 +135,9 @@ s=s.replace('  Simulator::Destroy ();', '''  flowMonitor->CheckForLostPackets();
   flowMonitor->SerializeToXmlFile("flowmonitor.xml", true, true);
   appCsv.close();
   Simulator::Destroy ();''')
-from scenario_extensions import extend
+from labcore.scenario_extensions import extend
 s=extend(s)
-from control_extensions import extend_control
+from labcore.control_extensions import extend_control
 s=extend_control(s)
 # Require exactly one main and write a standalone scratch source.
 assert s.count('main (int argc')==1

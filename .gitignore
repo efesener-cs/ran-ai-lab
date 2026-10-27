@@ -1,4 +1,4 @@
-__pycache__/
+*__pycache__/
 *.py[cod]
 .venv/
 .env
@@ -27,3 +27,4 @@ exports/
 /docs/STEP_[1-5].md
 /docs/POSTGRES_GRAFANA.md
 /examples/sample_application.csv
+rapor.md

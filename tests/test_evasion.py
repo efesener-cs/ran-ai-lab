@@ -7,7 +7,7 @@ from ai.runtime import RuntimeForecaster
 
 class EvasionTests(unittest.TestCase):
     def setUp(self):
-        self.model=RuntimeForecaster.load(Path(__file__).resolve().parent/'tests/fixtures/model.json')
+        self.model=RuntimeForecaster.load(Path(__file__).resolve().parents[1]/'tests/fixtures/model.json')
         self.obs=[dict(run_id='test',ue=1,tick=11,decision_time_s=1.2,warmup=False,cell=c,
                        current_path_cell=2,current=10+c,features=[10+c,11+c,1,.5,1,100,.01,0]) for c in [2,3,4,5]]
         self.config=dict(mode='fgsm',epsilon_db=2,seed=311,events=[dict(id='one',ue_imsi=1,start_s=1.2,end_s=1.4)])

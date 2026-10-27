@@ -9,7 +9,7 @@ from ai.runtime import RuntimeForecaster
 from evaluate_replay import replay_metrics, split_check, write_results
 
 
-FIXTURE = Path(__file__).resolve().parent / 'tests/fixtures/model.json'
+FIXTURE = Path(__file__).resolve().parents[1] / 'tests/fixtures/model.json'
 
 
 def write_run(root, backend='native', seed=29):

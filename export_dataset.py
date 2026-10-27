@@ -9,7 +9,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import sys
-from experiment_plan import labels
+from labcore.experiment_plan import labels
 
 
 def main():

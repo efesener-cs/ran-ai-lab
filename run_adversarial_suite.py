@@ -91,7 +91,7 @@ def main():
         training_seed_overlap=overlap, environment=dict(python=sys.version, platform=platform.platform()),
         invocation=sys.argv)
     # Hash the full local source surface used to generate, validate and analyze runs.
-    sources = list(lab.glob('*.py')) + list((lab / 'ai').glob('*.py')) + [lab / 'ran-ai-scenario.cc']
+    sources = list(lab.glob('*.py')) + list((lab / 'ai').glob('*.py')) + list((lab / 'labcore').glob('*.py')) + list((lab / 'tests').glob('*.py')) + [lab / 'ran-ai-scenario.cc']
     manifest['source_sha256'] = {str(path.relative_to(lab)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(sources)}
     if a.backend == 'native':
         manifest['simulation_binary_sha256'] = hashlib.sha256((lab / 'ran-ai-offline').read_bytes()).hexdigest()

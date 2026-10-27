@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from experiment_plan import make_plan
+from labcore.experiment_plan import make_plan
 
 p=argparse.ArgumentParser()
 p.add_argument('--duration',type=float,default=3)

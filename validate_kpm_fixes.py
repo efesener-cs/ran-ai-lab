@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
-from kpm_fixes import sender_override,patch_monitor
+from labcore.kpm_fixes import sender_override,patch_monitor
 
 lab=Path(__file__).resolve().parent
 ns=lab.parent/'ns-O-RAN-flexric/mmwave-LENA-oran'

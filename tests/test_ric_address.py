@@ -2,7 +2,7 @@ import errno
 from pathlib import Path
 import tempfile
 import unittest
-from ric_address import reserve_address
+from labcore.ric_address import reserve_address
 
 class AddressTests(unittest.TestCase):
     def test_busy_first_address_is_skipped(self):

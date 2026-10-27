@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from discover_sources import identify, discover
+from labcore.discover_sources import identify, discover
 
 class DiscoveryTests(unittest.TestCase):
     def test_version_filter_and_override(self):

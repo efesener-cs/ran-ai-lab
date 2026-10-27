@@ -13,7 +13,7 @@ from ai.policy import recommendations
 from ai.runtime import RuntimeForecaster
 from ai.stream import Telemetry
 
-LAB=Path(__file__).resolve().parent
+LAB=Path(__file__).resolve().parents[1]
 RUN=LAB/'results/live-20261025-202419-684771'
 
 class ModelTests(unittest.TestCase):

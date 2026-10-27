@@ -7,7 +7,7 @@ from ai.runtime import RuntimeForecaster
 
 class RuntimeValidationTests(unittest.TestCase):
     def setUp(self):
-        self.parameters = json.loads((Path(__file__).parent/'tests/fixtures/model.json').read_text())
+        self.parameters = json.loads((Path(__file__).resolve().parents[1]/'tests/fixtures/model.json').read_text())
 
     def test_invalid_scalars_rejected_before_inference(self):
         for name, value in [('bias', float('nan')), ('max_forecast_change_db', float('inf')),

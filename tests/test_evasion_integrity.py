@@ -15,7 +15,7 @@ class AuditIntegrityTests(unittest.TestCase):
     def fixture(self, root):
         directory = root/'csv'
         directory.mkdir()
-        model = RuntimeForecaster.load(Path(__file__).parent/'tests/fixtures/model.json')
+        model = RuntimeForecaster.load(Path(__file__).resolve().parents[1]/'tests/fixtures/model.json')
         observations = [dict(run_id='test',ue=1,tick=11,decision_time_s=1.2,warmup=False,
             cell=c,current_path_cell=2,current=10+c,features=[10+c,11+c,1,.5,1,100,.01,0])
             for c in [2,3,4,5]]

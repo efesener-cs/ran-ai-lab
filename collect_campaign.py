@@ -20,7 +20,7 @@ def save_plan(root,plan):
 
 
 def execution_hashes():
-    files=list(LAB.glob('*.py'))+list((LAB/'ai').glob('*.py'))+[LAB/'ran-ai-scenario.cc']
+    files=list(LAB.glob('*.py'))+list((LAB/'ai').glob('*.py')) + list((LAB / 'labcore').glob('*.py')) + list((LAB / 'tests').glob('*.py'))+[LAB/'ran-ai-scenario.cc']
     return {str(path.relative_to(LAB)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(files)}
 
 
