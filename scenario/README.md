@@ -2,6 +2,8 @@
 
 This package accepts a caller-supplied, self-contained ns-3 C++ source file. It does not generate a topology, patch the supplied C++ text, or ship a default network scenario. The `.cc`, `.cpp`, or `.cxx` file is copied byte-for-byte and its SHA256 is recorded.
 
+For environment setup, a runner-selection table, bootstrap data collection, training, and output locations, see [the usage guide](../docs/RUNNING.md).
+
 ## Run a scenario on its own
 
 With a compatible native ns-3 tree already built:

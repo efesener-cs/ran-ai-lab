@@ -71,6 +71,8 @@ Models, measurements, reports, exports, and build products remain local and excl
 
 ## Documentation
 
+For a first run, follow [the host usage guide](docs/RUNNING.md): environment setup, runner selection, initial data collection, model training, matched experiments, and CSV locations. The guide also explains bootstrap collection when no fitted model exists yet.
+
 - [Scenario contract](scenario/README.md)
 - [Running experiments](docs/RUNNING.md)
 - [CSV outputs and field meanings](docs/DATASET.md)
