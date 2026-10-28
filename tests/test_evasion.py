@@ -57,7 +57,7 @@ class EvasionTests(unittest.TestCase):
 
     def test_audit_rejects_tampered_budget(self):
         import csv,json,tempfile
-        from check_evasion import verify
+        from checks.check_evasion import verify
         from ai.policy import recommendations
         _,audit=Evasion(self.model,self.config).transform(self.obs)
         decisions,_=recommendations(self.model,self.obs)

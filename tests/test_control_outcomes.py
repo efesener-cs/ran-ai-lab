@@ -5,8 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from check_control import verify
-from analyze_experiments import analyze
+from checks.check_control import verify
 
 
 class ControlOutcomeTests(unittest.TestCase):
@@ -125,67 +124,6 @@ class ControlOutcomeTests(unittest.TestCase):
             self.assertFalse(result['infrastructure_valid'])
             self.assertTrue(any('non-submitted request' in error for error in result['validation_errors']))
 
-    def test_analysis_keeps_failed_outcome_and_aligns_to_window_start_with_relative_runs(self):
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder); suite = root / 'suite'; suite.mkdir()
-            modes = ['none', 'bias', 'exact']; run_paths = {}
-            model_hash = 'model-hash'
-            (suite / 'manifest.json').write_text(json.dumps({
-                'configuration': {'backend':'native','modes':modes,'seed':7,'run':1,'epsilon':0,
-                                  'ues':1,'duration':1},
-                'model_sha256':model_hash,
-                'runs': {mode:f'runs/{mode}' for mode in modes}, 'events': []}))
-            for mode in modes:
-                run = suite / 'runs' / mode; run_paths[mode] = run
-                (run / 'raw').mkdir(parents=True); (run / 'csv').mkdir()
-                (run / 'run_status.json').write_text(json.dumps(dict(
-                    status='complete',simulation_exit_code=0,ai_control_enabled=True)))
-                dispatch = 'sim_time_s,request_id,ue_imsi,from_cell,target_cell,status\n'
-                events = 'sim_time_s,request_id,ue_imsi,event,from_cell,target_cell,observed_cell\n'
-                if mode == 'bias':
-                    dispatch += '0.2,req,1,1,2,submitted\n'
-                    events += '0.8,req,1,timeout,1,2,0\n'
-                (run / 'raw/control_dispatch.csv').write_text(dispatch)
-                (run / 'raw/control_events.csv').write_text(events)
-                (run / 'csv/ai_shadow_decisions.csv').write_text(
-                    'decision_time_s,ue_imsi,recommended_cell_id,action\n' +
-                    ''.join(f'{i/10:.1f},1,2,recommend_handover\n' for i in range(2,11)))
-                (run / 'csv/ai_shadow_status.json').write_text(json.dumps({'model_sha256':model_hash}))
-                audit = ['decision_time_s,ue_imsi,nr_cell_id,event_active,input_perturbed,clean_best_cell,attack_target_cell,clean_prediction_db,observed_prediction_db,raw_sinr_mean_db,model_sinr_mean_db\n']
-                audit += [f'0.2,1,{cell},1,0,1,2,10,9,5,5\n' for cell in (1,2)]
-                (run / 'csv/ai_shadow_attack_audit.csv').write_text(''.join(audit))
-                with (run / 'csv/ue_application_100ms.csv').open('w') as stream:
-                    stream.write('window_start_s,window_end_s,ue_imsi,is_warmup,rx_bytes,app_goodput_mbps\n')
-                    for i in range(1,11):
-                        stream.write(f'{(i-1)/10:.1f},{i/10:.1f},1,{int(i==1)},10,0.01\n')
-                with (run / 'csv/adversarial_dataset.csv').open('w') as stream:
-                    stream.write('window_end_s,ue_imsi,nr_cell_id\n')
-                    for i in range(1,11):
-                        for cell in range(1,5): stream.write(f'{i/10:.1f},1,{cell}\n')
-            with patch('analyze_experiments.verify', return_value=dict(
-                passed=True,targeted_rank_hits=0,targeted_rank_trials=0,action_changes=0,
-                executable_command_changes=0,affected_ue_windows=0)), \
-                 patch('analyze_experiments.subprocess.run'):
-                output = root / 'analysis'
-                analyze([suite], output)
-            with (output / 'application_dataset.csv').open() as stream:
-                rows = list(csv.DictReader(stream))
-            by_condition_end = {(r['experiment_condition'],r['window_end_s']):r for r in rows}
-            failed_outcome_row = by_condition_end[('bias','0.3')]
-            self.assertEqual(failed_outcome_row['prior_decision_time_s'], '0.2')
-            self.assertEqual(failed_outcome_row['prior_decision_control_submitted'], '1')
-            self.assertEqual(failed_outcome_row['prior_decision_target_connected_confirmed'], '0')
-            self.assertEqual(by_condition_end[('bias','0.2')]['aml_input_event_active_same_window'], '1')
-            self.assertEqual(failed_outcome_row['aml_input_event_active_same_window'], '0')
-            with (output / 'run_summary.csv').open() as stream:
-                summaries = list(csv.DictReader(stream))
-            bias = next(r for r in summaries if r['experiment_condition']=='bias')
-            self.assertEqual(bias['control_submitted'], '1')
-            self.assertEqual(bias['control_confirmed'], '0')
-            self.assertEqual(bias['control_unconfirmed'], '1')
-            self.assertEqual(bias['control_rejected'], '0')
-            self.assertEqual(bias['control_outcome'], 'some_unconfirmed')
-            self.assertEqual(bias['control_status'], 'not_verified')
 
 
 if __name__ == '__main__':

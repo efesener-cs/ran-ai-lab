@@ -1,4 +1,4 @@
-"""Bounded source discovery inside the container; never select an incompatible tree silently."""
+"""Bounded host source discovery; never select an incompatible tree silently."""
 from pathlib import Path
 import os
 
@@ -59,5 +59,5 @@ def discover(kind, explicit=None, roots=()):
     if len(found) != 1:
         candidates = ', '.join(str(p) for p in sorted(found)) or 'none'
         raise RuntimeError(f'Expected one compatible {kind} tree; candidates: {candidates}. '
-                           f'Use --{kind} /container/source/path. Source trees must be present inside the container.')
+                           f'Use --{kind} /host/source/path. Source trees must already be installed.')
     return next(iter(found))

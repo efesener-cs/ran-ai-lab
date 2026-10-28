@@ -11,7 +11,6 @@ ran-ai-live
 *.a
 *.so
 *.sqlite*
-database/import_*.sql
 
 ai/artifacts/
 # Local reports and experimental output are never published.
@@ -27,4 +26,3 @@ exports/
 /docs/STEP_[1-5].md
 /docs/POSTGRES_GRAFANA.md
 /examples/sample_application.csv
-rapor.md

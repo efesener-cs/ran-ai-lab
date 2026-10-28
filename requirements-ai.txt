@@ -1,2 +1,2 @@
-# Training and unit tests on the host. Container shadow inference uses stdlib only.
+# Training and unit tests on the host. Runtime shadow inference uses stdlib only.
 numpy>=1.24,<3

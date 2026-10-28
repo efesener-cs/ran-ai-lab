@@ -14,7 +14,8 @@ from ai.runtime import RuntimeForecaster
 from ai.stream import Telemetry
 
 LAB=Path(__file__).resolve().parents[1]
-RUN=LAB/'results/live-20261025-202419-684771'
+from tests.fixtures.telemetry import write_telemetry
+from labcore.commands import command as cli_command
 
 class ModelTests(unittest.TestCase):
     def test_standard_library_inference_matches_training_runtime(self):
@@ -31,11 +32,15 @@ class ModelTests(unittest.TestCase):
         model=Forecaster.fit(np.zeros((25,len(FEATURES))),np.zeros(25),np.zeros(25))
         with self.assertRaises(ValueError):RuntimeForecaster(model.parameters).predict([[1]], [1])
 
-@unittest.skipUnless(RUN.exists(),'Recorded verified pilot not present; run model unit tests independently')
-class RecordedTelemetryTests(unittest.TestCase):
+class SyntheticTelemetryTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.run = write_telemetry(Path(temporary.name) / 'synthetic-run')
+
     def test_streaming_and_csv_feature_parity(self):
-        csv_obs,_=load_observations(RUN)
-        stream_obs=Telemetry(RUN/'raw',RUN.name,6).poll()
+        csv_obs,_=load_observations(self.run)
+        stream_obs=Telemetry(self.run/'raw',self.run.name,6).poll()
         key=lambda o:(o['ue'],o['cell'],o['tick'])
         a={key(o):o for o in csv_obs};b={key(o):o for o in stream_obs}
         self.assertEqual(a.keys(),b.keys())
@@ -43,11 +48,11 @@ class RecordedTelemetryTests(unittest.TestCase):
             np.testing.assert_allclose(a[k]['features'],b[k]['features'],atol=1e-9,equal_nan=True)
             self.assertEqual(a[k]['current_path_cell'],b[k]['current_path_cell'])
     def test_future_values_do_not_change_current_features(self):
-        original,_=load_observations(RUN)
+        original,_=load_observations(self.run)
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder)/RUN.name;(root/'csv').mkdir(parents=True)
-            (root/'run_status.json').write_text((RUN/'run_status.json').read_text())
-            with (RUN/'csv/ran_features_100ms.csv').open() as stream:rows=list(csv.DictReader(stream))
+            root=Path(folder)/self.run.name;(root/'csv').mkdir(parents=True)
+            (root/'run_status.json').write_text((self.run/'run_status.json').read_text())
+            with (self.run/'csv/ran_features_100ms.csv').open() as stream:rows=list(csv.DictReader(stream))
             for r in rows:
                 if float(r['window_start_s'])>=1.5:
                     r['sinr_mean_db']='1234';r['sinr_last_db']='1234'
@@ -65,12 +70,12 @@ class RecordedTelemetryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             raw=Path(folder)
             for name in ['MmWaveSinrTime.txt','RxPacketTrace.txt','CellIdStats.txt']:
-                (raw/name).symlink_to(RUN/'raw'/name)
-            lines=(RUN/'raw/app_kpi.csv').read_text().splitlines(True)
+                (raw/name).symlink_to(self.run/'raw'/name)
+            lines=(self.run/'raw/app_kpi.csv').read_text().splitlines(True)
             # Ten completed windows, with later radio samples already on disk.
             split=1+6*10
             (raw/'app_kpi.csv').write_text(''.join(lines[:split]))
-            adapter=Telemetry(raw,RUN.name,6);first=adapter.poll()
+            adapter=Telemetry(raw,self.run.name,6);first=adapter.poll()
             self.assertTrue(first);self.assertLessEqual(max(o['tick'] for o in first),9)
             with (raw/'app_kpi.csv').open('a') as stream:stream.write(''.join(lines[split:]))
             second=adapter.poll();self.assertGreaterEqual(min(o['tick'] for o in second),10)
@@ -79,12 +84,12 @@ class RecordedTelemetryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);raw=root/'raw';raw.mkdir();out=root/'out';stop=root/'stop'
             for name in ['MmWaveSinrTime.txt','RxPacketTrace.txt','CellIdStats.txt']:
-                (raw/name).symlink_to(RUN/'raw'/name)
-            lines=(RUN/'raw/app_kpi.csv').read_text().splitlines(True)
+                (raw/name).symlink_to(self.run/'raw'/name)
+            lines=(self.run/'raw/app_kpi.csv').read_text().splitlines(True)
             (raw/'app_kpi.csv').write_text(lines[0])
-            process=subprocess.Popen([sys.executable,str(LAB/'shadow_stream.py'),
+            process=subprocess.Popen([*cli_command('shadow_stream', LAB),
                 '--model',str(LAB/'tests/fixtures/model.json'),'--raw-dir',str(raw),
-                '--output',str(out),'--run-id',RUN.name,'--ues','6','--stop-file',str(stop)],
+                '--output',str(out),'--run-id',self.run.name,'--ues','6','--stop-file',str(stop)],
                 stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             try:
                 for start in range(1,len(lines),60):
@@ -100,7 +105,7 @@ class RecordedTelemetryTests(unittest.TestCase):
                 if process.poll() is None:process.kill();process.wait()
 
     def test_policy_batches_match_replay_and_apply_no_actions(self):
-        obs,_=load_observations(RUN)
+        obs,_=load_observations(self.run)
         model=RuntimeForecaster.load(LAB/'tests/fixtures/model.json')
         complete,_=recommendations(model,obs)
         state={};batches=[]

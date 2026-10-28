@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from check_live import check
+from checks.check_live import check
 
 class LiveEvidenceTests(unittest.TestCase):
     def fixture(self,root,unique=True):
@@ -23,5 +23,18 @@ class LiveEvidenceTests(unittest.TestCase):
             root=Path(d);self.fixture(root)
             (root/'raw/xapp.log').write_text('Connected E2 nodes = 5')
             self.assertFalse(check(root)['passed'])
+
+    def test_expected_node_count_can_match_an_external_topology(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);self.fixture(root)
+            status=json.loads((root/'run_status.json').read_text())
+            status['configuration']={'e2_nodes':7}
+            (root/'run_status.json').write_text(json.dumps(status))
+            self.assertFalse(check(root)['passed'])
+            status['configuration']['e2_nodes']=3
+            (root/'run_status.json').write_text(json.dumps(status))
+            result=check(root)
+            self.assertTrue(result['passed'])
+            self.assertEqual(result['expected_e2_nodes'],3)
 
 if __name__=='__main__':unittest.main()

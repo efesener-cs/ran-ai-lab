@@ -8,7 +8,7 @@ import unittest
 from ai.evasion import Evasion
 from ai.policy import recommendations
 from ai.runtime import RuntimeForecaster
-from check_evasion import verify
+from checks.check_evasion import verify
 
 
 class AuditIntegrityTests(unittest.TestCase):

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from check_control import verify
+from checks.check_control import verify
 
 class ControlEvidenceTests(unittest.TestCase):
     def fixture(self,root,wrong_target=False,missing_proposal=False):

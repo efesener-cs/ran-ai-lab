@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import build_csv
+import datasets.build_csv as build_csv
 
 
 class EmptyBearerTraceTests(unittest.TestCase):

@@ -1,4 +1,4 @@
-"""Standard-library inference so the simulation container does not need NumPy."""
+"""Standard-library inference; NumPy is needed for training, not runtime prediction."""
 import json
 import math
 from pathlib import Path
