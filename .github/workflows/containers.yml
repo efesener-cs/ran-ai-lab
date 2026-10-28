@@ -1,0 +1,35 @@
+name: Container acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      scenario_path:
+        description: 'Repository-relative path to a supplied, lab-compatible C++ scenario'
+        required: true
+        type: string
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      SCENARIO_PATH: ${{ inputs.scenario_path }}
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [native, live]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check supplied scenario
+        run: test -f "$SCENARIO_PATH"
+      - name: Build pinned dependencies
+        run: docker build --target ${{ matrix.backend }} -t ran-ai-lab:${{ matrix.backend }} --build-arg BUILD_JOBS=2 .
+      - name: Unit tests in image
+        run: bash docker/lab.sh ${{ matrix.backend }} "${{ runner.temp }}/lab-output" -m unittest discover -p 'test_*.py'
+      - name: Supplied scenario, training, attacks and analysis
+        run: RAN_AI_SCENARIO="$GITHUB_WORKSPACE/$SCENARIO_PATH" bash docker/lab.sh ${{ matrix.backend }} "${{ runner.temp }}/lab-output" docker/smoke.py --backend ${{ matrix.backend }} --scenario /opt/ran-ai-input/scenario.cc
+      - name: Preserve acceptance diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-${{ matrix.backend }}-diagnostics
+          path: ${{ runner.temp }}/lab-output
+          if-no-files-found: ignore

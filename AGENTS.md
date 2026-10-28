@@ -7,7 +7,7 @@
 - `scenario/` accepts external self-contained C++ sources, preserves exact snapshots, and compiles native executables. Do not generate, patch, or silently fall back to a bundled network scenario. Standalone execution uses `run_scenario`; AI runners require the explicit trace/control contract in scenario/README.md.
 - `ai/` owns telemetry features, training, replay, shadow inference, policy, attacks, and robustness.
 - `datasets/` exports measured CSV tables; `checks/` validates evidence. `analysis/` and `database/` were removed at the user's request; EDA is a separate user step.
-- `labcore/` owns shared paths, command construction, source fingerprints and host-native dependency helpers. Docker tooling belongs on `feat/docker-support`, not main.
+- `labcore/` owns shared paths, command construction, source fingerprints and host-native dependency helpers. This optional branch adds Docker tooling; keep its launcher on the same host-native live supervisor and preserve source-copy dependencies in labcore/runtime_bundle.py.
 - Read README.md and docs/RUNNING.md before changing execution behavior; docs/DATASET.md and docs/EVALUATION.md define scientific contracts.
 
 ## Protect active experiments
@@ -19,7 +19,7 @@
 
 ## Development conventions
 - Keep `docs/` limited to current setup, usage, and scientific contracts. Keep project evolution in `reports/reports.md` and the author's report in `reports/rapor.md`. Do not create dated step walkthroughs, duplicate report backups, or separate cleanup reports unless explicitly requested.
-- Keep the remaining CLI names, flags, CSV schemas, and native/live host paths coherent. Do not restore automatic EDA, database imports, or Docker dependencies on main unless explicitly requested.
+- Keep the remaining CLI names, flags, CSV schemas, and native/live host paths coherent. Do not restore automatic EDA or database imports. Keep Docker dependencies confined to this optional feature.
 - Entry-point scripts should expose main() and use an __main__ guard; importing modules must not run simulations, parse arguments, build binaries, or create artifacts.
 - Keep JSON publication atomic where readers run concurrently. Preserve fail-closed validation, warmup handling, closed telemetry windows, paired controls, and seed separation.
 - Do not call replay a causal QoS experiment, CSV control E2 RC, or batch processing time end-to-end near-RT latency.

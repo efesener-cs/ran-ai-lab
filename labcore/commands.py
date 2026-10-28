@@ -16,6 +16,7 @@ COMMANDS = {
     'run_adversarial_suite': 'simulation.run_adversarial_suite',
     'run_controlled': 'simulation.run_controlled',
     'run_experiment': 'simulation.run_experiment',
+    'run_docker': 'simulation.run_docker',
     'run_live': 'simulation.run_live',
     'run_scenario': 'simulation.run_scenario',
     'shadow_ai': 'ai.shadow_ai',

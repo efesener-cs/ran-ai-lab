@@ -2,7 +2,7 @@
 
 A CSV-based lab for testing whether bounded SINR telemetry manipulation changes forecasts, cell-selection decisions, and simulated application traffic.
 
-`main` runs directly on Linux. It contains no Docker packaging, database imports, plotting, or automatic EDA/statistics pipeline. Optional Docker tooling is preserved separately on `feat/docker-support`.
+`main` runs directly on Linux. This optional `feat/docker-support` branch adds dependency images and a prepared-container launcher. It retains CSV collection without database imports or automatic EDA/statistics. See [container setup](docs/CONTAINERS.md).
 
 ## Supply a scenario
 
@@ -78,3 +78,7 @@ Models, measurements, reports, exports, and build products remain local and excl
 - [Related work](docs/RESEARCH.md)
 - [Dependency provenance](docs/PROVENANCE.md)
 - [Attribution](NOTICE.md)
+
+## Optional prepared-container launcher
+
+`python3 lab.py run_docker --container flexric --scenario /path/to/compatible.cc --output results/docker-run` copies the maintained runtime into an existing container and retrieves outputs. `run_live` always supervises processes in its current Linux environment, including when called inside a dependency image.
