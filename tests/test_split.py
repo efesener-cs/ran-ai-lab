@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 
-from train_ai import select_alpha, validate_run_split, validate_sources
+from ai.train import select_alpha, validate_run_split, validate_sources
 
 
 def source(name, digest, seed):

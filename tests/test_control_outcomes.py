@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from check_control import verify
-from analyze_experiments import analyze
+from checks.check_control import verify
+from analysis.analyze_experiments import analyze
 
 
 class ControlOutcomeTests(unittest.TestCase):
@@ -162,10 +162,10 @@ class ControlOutcomeTests(unittest.TestCase):
                     stream.write('window_end_s,ue_imsi,nr_cell_id\n')
                     for i in range(1,11):
                         for cell in range(1,5): stream.write(f'{i/10:.1f},1,{cell}\n')
-            with patch('analyze_experiments.verify', return_value=dict(
+            with patch('analysis.analyze_experiments.verify', return_value=dict(
                 passed=True,targeted_rank_hits=0,targeted_rank_trials=0,action_changes=0,
                 executable_command_changes=0,affected_ue_windows=0)), \
-                 patch('analyze_experiments.subprocess.run'):
+                 patch('analysis.analyze_experiments.subprocess.run'):
                 output = root / 'analysis'
                 analyze([suite], output)
             with (output / 'application_dataset.csv').open() as stream:

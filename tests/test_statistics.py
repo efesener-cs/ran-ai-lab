@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from summarize_campaign import load_rows, summarize, write_outputs
+from analysis.summarize_campaign import load_rows, summarize, write_outputs
 
 
 FIELDS = ['suite_id', 'backend', 'experiment_seed', 'experiment_condition',

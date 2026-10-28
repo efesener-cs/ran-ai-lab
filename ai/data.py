@@ -60,6 +60,7 @@ def load_observations(root,require_clean=True,allow_native=False):
                     current_path_cell=int(r.get('ue_nr_rrc_cell_id') or r['last_recorded_path_cell_id']) if (r.get('ue_nr_rrc_cell_id') or r['last_recorded_path_cell_id']) else None))
             previous=(tick,current)
     metadata=dict(run_id=root.name,source_csv='csv/ran_features_100ms.csv',
+                  scenario_sha256=(status.get('scenario') or {}).get('sha256'),
                   sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                   configuration=status.get('configuration',{}),
                   seed=(status.get('configuration') or {}).get('seed'),

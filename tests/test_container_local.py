@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from labcore.container_local import run
+from simulation.container_local import run
 
 
 class ContainerLocalTests(unittest.TestCase):
@@ -13,6 +13,8 @@ class ContainerLocalTests(unittest.TestCase):
             output = root / 'suite-none'
             lab = root / 'lab'
             lab.mkdir()
+            source = root / 'external.cc'
+            source.write_text('int main() { return 0; }\n')
             def copy_file(source, dest):
                 Path(dest).write_text('test')
             def copy_tree(source, dest, **kwargs):
@@ -33,15 +35,15 @@ class ContainerLocalTests(unittest.TestCase):
                 if str(source) == '/opt/flexric' or Path(source).parent == lab:
                     return copy_tree(source, dest, **kwargs)
                 return real_copytree(source, dest, *args, **kwargs)
-            with patch('labcore.container_local.shutil.copy2', side_effect=copy_file), \
-                 patch('labcore.container_local.shutil.copytree', side_effect=tree), \
-                 patch('labcore.container_local.subprocess.call', side_effect=supervise):
-                self.assertEqual(run(lab, output, ['--apply-ai-control']), 7)
+            with patch('simulation.container_local.shutil.copy2', side_effect=copy_file), \
+                 patch('simulation.container_local.shutil.copytree', side_effect=tree), \
+                 patch('simulation.container_local.subprocess.call', side_effect=supervise):
+                self.assertEqual(run(lab, output, ['--apply-ai-control'], scenario=source), 7)
             self.assertEqual((output / 'raw/simulation.log').read_text(), 'diagnostic')
 
     def test_existing_output_is_rejected_before_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
-            with patch('labcore.container_local.subprocess.call') as launch:
+            with patch('simulation.container_local.subprocess.call') as launch:
                 with self.assertRaises(FileExistsError):
                     run(Path(temporary), Path(temporary), [])
                 launch.assert_not_called()

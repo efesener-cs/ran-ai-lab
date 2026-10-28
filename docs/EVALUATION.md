@@ -1,77 +1,45 @@
-# Değerlendirme protokolü
+# Evaluation protocol
 
-Bu depo, sentetik ns-3 koşularında telemetri bias'ının model skorları, kararlar ve
-uygulama trafiğiyle ilişkisini inceler. Sonuçlar saha RF saldırısı, ticari RAN
-genellemesi veya QoS garantisi değildir. E2 KPM'den canlı inference ve E2 RC
-kontrolü uygulanmış değildir; live backend mevcut FlexRIC/E2 hattını doğrular,
-AI kararları yine kapanmış telemetri pencerelerinde üretilir.
+This repository studies how bounded telemetry bias affects forecasts, decisions, and application traffic in synthetic ns-3 runs. It does not establish field RF attack effects, commercial-network generalization, or QoS guarantees. The live backend verifies FlexRIC/E2 monitoring; model input still comes from closed ns-3 trace windows, and control uses CSV-to-ns-3 RRC rather than E2 RC.
 
-## Kontrollü suite
+## Matched conditions
 
-`run_adversarial_suite.py` aynı model, seed/run, UE sayısı, süre ve olay
-takvimiyle koşul setini eşler. `--modes` altı modu kabul eder: `none`,
-`random`, `bias`, `fgsm`, `pgd`, `exact`. Varsayılan set altısını da içerir;
-`none` zorunludur ve bir kere çalıştırılır. `--epsilon` ham SINR bias sınırıdır
-(0–5 dB). Epsilon sıfır deneyi, bias olmayan kontrol niteliğinde ayrı bir suite
-olarak çalıştırılmalıdır; farklı epsilon/seed/backend sonuçları birbirine
-karıştırılmamalıdır. Suite en az 3, en fazla 120 UE ve en az 3 saniye ister.
+Each new suite requires an external `--scenario` implementing the [lab input/output contract](../scenario/README.md). Its exact source is captured as `scenario.cc`; `scenario_sha256` is included in the pipeline fingerprint. Conditions use that same snapshot and native executable identity. Older measurements remain analyzable, but they do not establish effects for a new scenario.
+
+`simulation/run_adversarial_suite.py` holds the model, seed/run, UE count, duration, and event schedule fixed across conditions. Modes are `none`, `random`, `bias`, `fgsm`, `pgd`, and `exact`; all six are enabled by default. Modes must be distinct and include exactly one `none`. Suites require 3–120 UEs and at least 3 seconds.
+
+`--epsilon` is the raw SINR bias budget, 0–5 dB. Epsilon-zero suites are a separate no-bias control. Keep different epsilon, seed, and backend results identifiable.
 
 ```bash
-python3 run_adversarial_suite.py --backend native --duration 3 --ues 6 \
+python3 lab.py run_adversarial_suite --scenario /path/to/compatible.cc --backend native --duration 3 --ues 6 \
   --seed 41 --run 1 --epsilon 2 --modes none random bias fgsm pgd exact \
   --access two_cell --predictor ridge --output results/suite-e2
 
-python3 run_adversarial_suite.py --backend native --duration 3 --ues 6 \
+python3 lab.py run_adversarial_suite --scenario /path/to/compatible.cc --backend native --duration 3 --ues 6 \
   --seed 41 --run 1 --epsilon 0 --modes none random bias fgsm pgd exact \
   --output results/suite-e0
 ```
 
-Erişim seçenekleri `two_cell`, `target_only`, `best_only`'dır. `--predictor
-persistence` aynı ridge şemasını koruyan, sıfır residual ağırlık ve bias ile
-mevcut SINR'ı tahmin eden taban çizgisini suite boyunca kullanır. Model dosyası
-ve hash'i her suite manifestinde saklanır.
+Access scopes are `two_cell`, `target_only`, and `best_only`. The persistence predictor uses the current SINR through zero residual weights and bias while retaining the model schema. Model files and hashes are saved with suite manifests.
 
-`fgsm` tek adım kullanır. `pgd` varsayılan olarak 10 projeksiyon adımı ve 5
-başlangıç kullanır; başlangıçlar arasındaki en iyi bulunan iterat korunur.
-Adımlar/başlangıç sayısı `--steps`, `--restarts` ile ayarlanır. Bu yöntemler
-yerel modeldeki bir pencerenin tahmin sıralamasına göre tasarlanmıştır.
+FGSM takes one step. PGD defaults to ten projected steps and five starts, retaining the best iterate across starts. Adjust these with `--steps` and `--restarts`. The objective is the current decision's forecast ranking, rather than a future measured SINR or application-loss target.
 
-`--max-step-db` bir pencerenin bias değişimini önceki tick'teki bias'a göre
-sınırlar. Saldırı etkisiz kaldığında (olay dışında veya hücre saldırı
-desteğinde değilken) bias sıfırlanır; dolayısıyla bu seçenek bütün koşu için
-kesintisiz bir slew limiti tanımlamaz.
+`--max-step-db` constrains active bias changes relative to the previous tick. Bias resets to zero outside an event or accessible cell support, so this is not a continuous whole-run slew guarantee.
 
-`exact` ve optimizasyon denetimindeki optimum, geçmiş bias'ı sabit tutup mevcut
-pencerenin erişilebilir hücre bias'ları üzerinde hedef-birinci tahmin marjını
-tek pencere için çözer. Çok pencereli yörünge, QoS veya kontrol başarısı
-optimizasyonu değildir.
+`exact` and the optimizer reference solve the accessible current-window cell-bias problem for the target-minus-original-best forecast margin with past bias fixed. They do not optimize a multi-window trajectory, QoS, or control success.
 
-## Robust bütçe
+## Robust decision budget
 
-`--robust-budget-db B` politika kararında her hücrenin bir-adımlı forecast
-aralığını hesaplar. Mevcut ve önceki pencere SINR bias'larının birbirinden
-bağımsız olarak `[-B, B]` içinde değişebileceğini varsayar; handover önerisi
-ancak en kötü durum skor kazancı histerezis eşiğini geçerse verilir. Aksi halde
-politika `hold` eder. Bu savunma saldırı/oyun teorisi optimizasyonu değildir.
+`--robust-budget-db B` computes one-step forecast intervals assuming current and previous SINR biases can independently lie in `[-B, B]`. A handover is recommended only if the worst-case score gain clears hysteresis; otherwise the policy holds.
 
-Aralık, model parametrelerinin ve diğer telemetri özelliklerinin güvenilir
-olduğunu varsayar. Yalnız bir-adımlı skor farkını sınırlar; gerçek SINR, QoS,
-throughput, handover teyidi veya farklı politika yörüngesindeki sonraki
-kararları sertifikalandırmaz. `--robust-budget-db` 0–5 dB kabul eder. Çalışan
-policy kararlarında bütçe ve `certified_gain_lower_db` kaydedilir; tahmin CSV'si
-nokta tahminlerini içerir.
+Model parameters and other telemetry features are assumed trusted. The interval bounds the one-step score difference, not physical SINR, throughput, QoS, handover confirmation, or later policy decisions. Accepted budgets are 0–5 dB. Decision rows record the budget and `certified_gain_lower_db`; forecast CSVs retain point predictions. `off` disables this rule, whereas `0` applies it with zero uncertainty. These are separate conditions.
 
-## Bağımsız eğitim ve test
+## Independent training and testing
 
-Pilot bölmesi aynı koşudaki UE gruplarını ayırır ve `same_run_held_out_UE_pilot`
-olarak raporlanır; bağımsız koşu doğrulaması değildir. Bağımsız değerlendirme
-için train, validation ve test run'larını ayrı verin. Native data kaynağına izin
-vermek için `--allow-native` gerekir; bu bayrak live-E2 doğrulaması sağlamaz.
-Alpha grid yalnız training fit'leri ve validation MAE ile seçilir; son model
-training setinde yeniden fit edilir. Test seti seçime girmez:
+Default training holds out UE groups from the same run and labels this `same_run_held_out_UE_pilot`. For independent evaluation, use separate runs and seeds:
 
 ```bash
-python3 train_ai.py --allow-native \
+python3 -m ai.train --allow-native \
   --run-dir results/native-clean-seed41 \
   --validation-run-dir results/native-clean-seed53 \
   --test-run-dir results/native-clean-seed67 \
@@ -79,86 +47,39 @@ python3 train_ai.py --allow-native \
   --output ai/artifacts/native-seed41-val53-test67
 ```
 
-Train/validation/test koşuları farklı seed taşımalı; tekrarlı kaynak, ortak CSV
-SHA256 veya split'ler arası ortak seed reddedilir. Validation split'i hem train
-hem testten ayrıdır. Provenance train, validation ve test kaynaklarını ayrı
-alanlarda tutar. Üç seed burada örnek komut değerleridir; bağımsız tekrarların
-varlığı tek başına geniş dış geçerlilik kanıtı değildir.
+Native sources need explicit `--allow-native`, which does not verify live E2. Alpha candidates are fit on training data, selected by validation MAE, and the selected model is fit on training data only. Test data is excluded from selection. The three example seeds do not themselves establish broad external validity.
 
-## Analiz ve kontrol doğrulaması
+Training, validation, and test inventories must not share paths, run IDs, CSV hashes, or seeds. Missing seeds are rejected for independent evaluation. Source provenance records all splits separately.
+
+## Analysis, replay, and control evidence
 
 ```bash
-python3 analyze_experiments.py results/suite-e2 results/suite-e0 \
+python3 lab.py analyze_experiments results/suite-e2 results/suite-e0 \
   --output results/analysis-local
-python3 summarize_campaign.py results/analysis-local/run_summary.csv \
+python3 lab.py summarize_campaign results/analysis-local/run_summary.csv \
   --output results/analysis-local/statistics
-python3 check_control.py results/suite-e2/suite-e2-pgd --native
-python3 evaluate_replay.py --model ai/artifacts/native-seed41-val53-test67/model.json \
+python3 lab.py check_control results/suite-e2/suite-e2-pgd --native
+python3 lab.py evaluate_replay --model ai/artifacts/native-seed41-val53-test67/model.json \
   --run-dir results/native-clean-seed67 --allow-native --epsilon 2 \
   --access two_cell --robust-budget-db 1 --output results/replay-seed67
 ```
 
-Analiz paired `none` koşusuna göre run özeti üretir. `summarize_campaign.py`
-seed kümeli bootstrap aralığı hesaplar; aynı seed içindeki tekrarlı suite'leri
-önce ortalar ve p-değeri üretmez. İki bağımsız seed'den azında CI üretmez; iki
-seed de belirsiz aralıktır. Native/live, predictor, access, robust budget,
-defense, UE/süre/epsilon strata'ları ayrı tutulmalıdır. `off` ile robust bütçe
-`0` farklıdır: off savunmayı kapatır, 0 ise sıfır bias aralığını sertifikalandırır.
+Analysis compares each condition with its paired `none`. Seed-cluster bootstrap first averages repeats within a seed and does not compute p-values. Fewer than two independent seeds yields no interval; 2–4 seeds produces a small-sample warning. Keep backend, pipeline, predictor, access, defense, budget, UE count, duration, and epsilon strata separate.
 
-`evaluate_replay.py` model provenance'ını test run'larına göre denetler; modelde
-provenance yoksa yalnız `--allow-unverified-split` açıkça verildiğinde devam eder.
-Replay ridge ve persistence'ı altı modda, ayrı run/predictor/access/bütçe
-satırlarıyla raporlar. Hedef, temiz telemetriden türetilen sonraki-window SINR
-etiketidir. Sentetik in-memory perturb ölçülmüş radyo/uygulama trafiğini
-değiştirmez; bu analiz nedensel QoS/throughput etkisi veya handover başarısı
-ölçmez, ağ kontrolü uygulamaz.
+Replay verifies model split provenance against test sources. A legacy model missing provenance requires explicit `--allow-unverified-split`. Replay reports each run/predictor/mode/access/budget separately, with measured next-window SINR as its target. In-memory perturbation does not change measured radio/application traffic or apply network controls. It cannot establish causal QoS loss or handover success.
 
-Kontrol doğrulaması altyapı kanıtını (tamamlanma, kayıt biçimi, referanslar)
-kontrol sonucu (submitted, confirmed, rejected/unconfirmed) olarak ayrı raporlar.
-`passed` ayrıca en az bir submission ve tüm submission'ların teyidini gerektiren
-sıkı başarı sinyalidir. Daha sonraki target-connected olayı o anda teyittir; tüm
-pencere boyunca hedef hücre kullanımı veya QoS iyileşmesi değildir.
+Control verification separates infrastructure validity from submitted, confirmed, rejected, and unconfirmed outcomes. Its stricter `passed` flag requires at least one submission and confirmation of every submission. A later target-connected event confirms state at that time; it is not evidence of target-cell occupancy throughout a window or of QoS improvement. Healthy all-hold runs need not satisfy that strict flag.
 
-## Zaman eşlemesi ve eksik alanlar
+## Time alignment and missingness
 
-Model kararı kapanan 100 ms pencerenin sonundaki `decision_time_s` ile
-zamanlanır. Attack audit'teki `event_active` ve `input_perturbed` aynı kapanan
-pencerenin saldırı/model girdisini açıklar. `analyze_experiments.py`, bu AML
-alanlarını uygulama penceresine aynı-window etiketi olarak ekler. `prior_decision_*`
-alanları ise uygulama penceresinin `window_start_s` anına eşleşen önceki
-kararıdır. Sonraki kontrol teyidi olay zamanıyla raporlanır; başlangıçtan sona
-hedef hücrede kalındığını ima etmez.
+Decisions are timestamped at the end of a closed 100 ms window. Audit `event_active` and `input_perturbed` describe the input at that decision. Analysis joins these as same-window labels; the window's received bytes predate the new decision. `prior_decision_*` fields align with the application's window start. Subsequent control confirmations carry their own timestamps.
 
-Radyo tablosundaki `aml_audit_available=0` audit eşleşmesinin bulunmadığı
-anlamına gelir; AML alanlarındaki boş dizgeler sıfır olarak yorumlanmamalıdır.
-Eş audit kaydında `event_active=0` ve `input_perturbed=0` pencerenin açıkça
-pasif/bozulmamış olduğunu gösterir. Uygulama tablosundaki `aml_*_same_window`
-bayrakları join sırasında eş audit yoksa 0'a doldurulur; bu yüzden tek başına
-audit varlığı kanıtı değildir. Eş audit kaydında boş `active_event_ids`, mode
-`none` olsa da, o girdiye uygulanan etkin evasion olmadığını gösterir.
-`prior_decision_time_s` boşsa başlangıçta eş karar yoktur;
-boş `prior_decision_action` `hold` anlamına gelmez.
+Radio `aml_audit_available=0` means the audit join is missing; empty AML fields are not zeros. In a present audit, zero event/perturbation flags explicitly describe an inactive/unmodified input. Application `aml_*_same_window` flags fill with zero on a missing join, so they alone cannot establish availability. Use `aml_input_audit_available` for that distinction. Empty `active_event_ids` in a present audit means no applied active event, including `none`. Empty prior decision time means no matched decision; empty action does not mean `hold`.
 
-Bu protokol kısa, sentetik pilotları düzenli ve denetlenebilir biçimde
-karşılaştırmayı amaçlar; sonuç iddiası yerine geçmez.
+## Source revisions and timing scope
 
+Campaigns hash sources between jobs. Do not edit during execution. If a reviewed source change is necessary before resuming, `--allow-code-change` records an explicit boundary; it does not relabel old runs as reproduced by new code. Analysis carries manifest hashes into provenance without requiring them to equal the current checkout, allowing old experiments to be inspected with newer validators.
 
-## Kaynak sürümleri ve denetim kapsamı
+`experiment_pipeline_sha256` separately fingerprints simulation/inference sources and binary/image identity. Different pipelines are not pooled in seed statistics. Missing post-warmup decision/audit coverage fails validation; an empty audit during initial warmup is not a clean-measurement claim.
 
-Campaign kaynak dosyalarını işler arasında hash ile denetler. Çalışırken kaynak
-kodunu düzenlemeyin; sürüm değişiminden sonra devam etmek gerekiyorsa değişikliği
-inceleyip `--allow-code-change` ile açık bir revizyon sınırı kaydedin. Bu seçenek
-eski koşuları yeni kodla yeniden üretilmiş saymaz. Analiz, suite manifestindeki
-kaynak hash'lerini provenance'a taşır; mevcut çalışma ağacının hash'ine eşitliği
-zorunlu tutmaz. Böylece eski deneyler yeni doğrulayıcıyla incelenebilir.
-
-Simülasyon/çıkarım kaynakları ve binary/image kimliği için ayrı
-`experiment_pipeline_sha256` üretilir; farklı fingerprint'ler istatistikte
-birleştirilmez. Yeni uygulama tablosunda `aml_input_audit_available`, audit join'inin
-bulunup bulunmadığını gösterir. Post-warmup karar/audit kapsamı eksikse analiz
-geçmez; ilk warmup penceresinde boş audit, temiz ölçüm anlamına gelmez.
-
-`ai_shadow_status.json` içindeki `batch_processing` duvar saati ölçümü,
-poll sonrasındaki saldırı, referans/gözlenen politika ve CSV yayınını kapsar.
-Telemetri üretim/bekleme ve RRC teyidini kapsamaz; gerçek near-RT uçtan uca gecikme
-veya deadline karşılama kanıtı değildir.
+`batch_processing` in `ai_shadow_status.json` measures wall-clock work after polling: attacks, reference/observed policy, and CSV publication. It excludes telemetry generation, poll waiting, and RRC confirmation. It is not end-to-end near-RT latency or deadline evidence.

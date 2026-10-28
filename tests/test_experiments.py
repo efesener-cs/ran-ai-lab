@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from labcore.experiment_plan import make_plan, labels
+from simulation.experiment_plan import make_plan, labels
 
 class ExperimentTests(unittest.TestCase):
     def test_seed_reproducibility_and_bounds(self):

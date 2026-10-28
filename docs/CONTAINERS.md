@@ -1,94 +1,73 @@
-# Baştan sona container içinde tekrar üretim
+# Container setup with an external scenario
 
-Hostta yalnız Docker Engine ve Bash gerekir. Python, ns-3, e2sim, eğitim ve
-analiz paketleri image içinde kurulur. Kaynaklar hosttan bağlanmaz; image
-checkout'ın kaynak kopyasını içerir. Docker soketi, privileged veya host network
-kullanılmaz. Mevcut `flexric` container'ı bu yolun parçası değildir.
+The host needs Linux, Docker Engine, and Bash. Images install Python, ns-3, e2sim, and analysis/training dependencies. The live target also installs FlexRIC. They do not contain a default network scenario or compile one during image build.
 
-İki bağımsız hedef vardır: `native`, mevcut native campaign protokolünün ns-3.38
-ortamıdır; `live`, ns-3.42 + FlexRIC E2AP v1/KPM v3 ortamıdır. Container içinde
-çalışması native deneyi live-E2 deneyine dönüştürmez. CSV → RRC kontrolü E2 RC
-değildir. Bu iki backend'in performans ölçümlerini aynı deney gibi birleştirmeyin.
+The `native` target uses ns-3.38; `live` uses ns-3.42 with E2AP v1/KPM v3 monitoring. Native execution inside Docker remains native. Keep their performance results separate. Control uses CSV-to-RRC, not E2 RC.
 
-## Image oluşturma
-
-Temiz checkout'ta, depo kökünden:
+## Build dependency images
 
 ```bash
 docker build --target native -t ran-ai-lab:native --build-arg BUILD_JOBS=2 .
 docker build --target live -t ran-ai-lab:live --build-arg BUILD_JOBS=2 .
-bash docker/lab.sh native /tmp/ran-ai-repeat -m unittest discover -p 'test_*.py'
+bash docker/lab.sh native "$PWD/results/container-native" -m unittest discover -p 'test_*.py'
 ```
 
-Ayrı hostta veya aktif kampanya bittikten sonra uçtan uca kabul testi:
+The first build downloads and compiles dependencies. Commits are pinned in `Dockerfile`; Ubuntu packages and indirect Python dependencies are not complete snapshots. Retain an image digest for a shareable environment. `/opt/dependency-revisions.txt` and `/opt/python-packages.txt` record versions. Set `RAN_AI_IMAGE=registry/image@sha256:...` to use a retained image.
+
+`lab.sh` runs as the host user and mounts output `results`, `models`, and `exports` directories. It does not mount a Docker socket or use privileged/host-network mode. An existing `flexric` container is not part of this image workflow.
+
+## Mount and run your source
+
+Set `RAN_AI_SCENARIO` to the host C++ file. The launcher mounts it read-only at `/opt/ran-ai-input/scenario.cc`:
 
 ```bash
-bash docker/lab.sh native /tmp/ran-ai-acceptance docker/smoke.py --backend native
-bash docker/lab.sh live /tmp/ran-ai-acceptance docker/smoke.py --backend live
+RAN_AI_SCENARIO=/path/to/student.cc \
+  bash docker/lab.sh native "$PWD/results/container-native" \
+  lab.py run_scenario --scenario /opt/ran-ai-input/scenario.cc \
+  --output results/student-run -- --simTime=5
 ```
 
-Bu komutlar yeni dizinlerde üç temiz kaynak koşusu, bağımsız model eğitimi,
-altı saldırı modu ve analiz çalıştırır; araştırma sonucunun yerini tutmaz.
-GitHub Actions `Container acceptance` akışı aynı kontrolleri iki backend için
-ayrı job'larda elle tetiklemeyi ve hata loglarını indirmeyi sağlar.
+The program must match the image's ns-3 APIs. Source bytes are copied without editing. Build caches use the mounted results directory via `RAN_AI_BUILD_ROOT`; the immutable image source tree need not be writable. Extra scenario-local headers are not mounted automatically, so supply a self-contained source.
 
-İlk build internet ve C++ derleme süresi gerektirir. Kaynak commit'leri
-Dockerfile'da sabittir; değiştirilen build argümanları farklı deney ortamıdır.
-Ubuntu paket deposu ve dolaylı Python paketleri tam snapshot değildir. Kesin
-ortamı paylaşmak için kullanılan image'ı registry'ye gönderip digest ile saklayın;
-`docker image inspect` kimliğini de arşivleyin. Image içindeki
-`/opt/dependency-revisions.txt` ve `/opt/python-packages.txt` sürüm dökümüdür.
-`RAN_AI_IMAGE=registry/image@sha256:... bash docker/lab.sh ...` aynı image'ı seçer.
-
-Aktif deney sürerken bu build'leri veya entegrasyon denemelerini aynı hostta
-başlatmayın. Bu branch'in ilk tesliminde image build ve gerçek simülasyon,
-aktif kampanyayı koruma kuralı nedeniyle çalıştırılmamıştır; aşağıdaki kabul
-komutlarını kampanya bittikten sonra veya ayrı bir hostta çalıştırın.
-
-## Sıfırdan live veri, eğitim ve eşlenmiş suite
-
-Tüm çağrılarda aynı yeni çıktı dizinini kullanın. `lab.sh`, host kullanıcısıyla
-çalışır ve yalnız `results`, `models`, `exports` alt dizinlerini bağlar.
-Container içindeki yollar her çağrıda aynı kalır; campaign resume yolları korunur.
+For live monitoring, the scenario must implement compatible E2 agents and the [lab telemetry contract](../scenario/README.md):
 
 ```bash
-bash docker/lab.sh live /tmp/ran-ai-repeat run_live.py --duration 3 --ues 6 --seed 11 --output results/train-clean
-bash docker/lab.sh live /tmp/ran-ai-repeat check_live.py results/train-clean
-bash docker/lab.sh live /tmp/ran-ai-repeat run_live.py --duration 3 --ues 6 --seed 23 --output results/validation-clean
-bash docker/lab.sh live /tmp/ran-ai-repeat run_live.py --duration 3 --ues 6 --seed 37 --output results/test-clean
-bash docker/lab.sh live /tmp/ran-ai-repeat train_ai.py --run-dir results/train-clean --validation-run-dir results/validation-clean --test-run-dir results/test-clean --alpha-grid 0.1 1 10 100 1000 --output ai/artifacts/live
-bash docker/lab.sh live /tmp/ran-ai-repeat run_adversarial_suite.py --backend live --model ai/artifacts/live/model.json --duration 3 --ues 6 --seed 41 --epsilon 2 --output results/live-suite41
-bash docker/lab.sh live /tmp/ran-ai-repeat analyze_experiments.py results/live-suite41 --output exports/live-analysis
+RAN_AI_SCENARIO=/path/to/compatible.cc \
+  bash docker/lab.sh live "$PWD/results/container-live" \
+  lab.py run_live --scenario /opt/ran-ai-input/scenario.cc \
+  --duration 3 --ues 6 --e2-nodes 5 --seed 11 --output results/train-clean
+bash docker/lab.sh live "$PWD/results/container-live" lab.py check_live results/train-clean
 ```
 
-Live suite manifesti launcher'ın seçtiği gerçek image kimliğini kaydeder.
-Hatalarda da run logları çıktı dizinine kopyalanır. Her run ayrı geçici build
-dizini ve RIC loopback adresi kullanır. Yeniden denemede yeni output adı seçin;
-mevcut sonuçlar üzerine yazılmaz. Kaynak/model dosyalarını çalışırken değiştirmeyin.
+Use the same output root to retain stable paths across collection, training, and resume. Pick a fresh run name for retries. Diagnostics are retrieved after failures. Each live run uses run-local build preparation and a separate RIC loopback address. Keep sources/models fixed while collection runs.
 
-## Native campaign'i container içinde tekrarlama
+## Train and compare
 
-Native eğitimin başlangıç kontrol modeli için yalnız sentetik fixture kullanılır;
-bu model eğitilmiş araştırma modeli veya raporlanacak tahmin başarısı değildir.
-Üç saldırısız native kontrol koşusundan bağımsız train/validation/test verisi
-üretilir. Kendi protokolünüzde süreyi/UE sayısını ve kaynak seed'lerini sabitleyin.
+Collect clean runs with disjoint seeds (for example 11/23/37) using compatible control/telemetry. For native bootstrap collection, the synthetic `tests/fixtures/model.json` may drive the initial control loop; it is not a trained research model or a model-quality result.
 
 ```bash
-bash docker/lab.sh native /tmp/ran-ai-native run_controlled.py --model tests/fixtures/model.json --duration 3 --ues 6 --seed 11 --output results/train-clean
-bash docker/lab.sh native /tmp/ran-ai-native run_controlled.py --model tests/fixtures/model.json --duration 3 --ues 6 --seed 23 --output results/validation-clean
-bash docker/lab.sh native /tmp/ran-ai-native run_controlled.py --model tests/fixtures/model.json --duration 3 --ues 6 --seed 37 --output results/test-clean
-bash docker/lab.sh native /tmp/ran-ai-native train_ai.py --allow-native --run-dir results/train-clean --validation-run-dir results/validation-clean --test-run-dir results/test-clean --alpha-grid 0.1 1 10 100 1000 --output ai/artifacts/native
-bash docker/lab.sh native /tmp/ran-ai-native collect_campaign.py --backend native --model ai/artifacts/native/model.json --duration 10 --ues 24 --seeds 41 53 67 --epsilons 0 2 --predictors ridge persistence --robust-budgets-db off 2 --modes none random bias fgsm pgd exact --access two_cell --restarts 5 --plan-only
+bash docker/lab.sh native "$PWD/results/container-native" \
+  -m ai.train --allow-native --run-dir results/train-clean \
+  --validation-run-dir results/validation-clean --test-run-dir results/test-clean \
+  --alpha-grid 0.1 1 10 100 1000 --output ai/artifacts/native
+
+RAN_AI_SCENARIO=/path/to/compatible.cc \
+  bash docker/lab.sh native "$PWD/results/container-native" \
+  lab.py collect_campaign --scenario /opt/ran-ai-input/scenario.cc \
+  --backend native --model ai/artifacts/native/model.json --duration 10 --ues 24 \
+  --seeds 41 53 67 --epsilons 0 2 --modes none random bias fgsm pgd exact --plan-only
 ```
 
-Son komutun yazdırdığı **yeni** campaign yolu ile:
+Resume using the newly printed campaign path. Once captured, its scenario snapshot lives under the mounted results directory and is reused; changing the original source does not replace it.
+
+## Full acceptance requires a compatible supplied source
 
 ```bash
-bash docker/lab.sh native /tmp/ran-ai-native collect_campaign.py --resume results/campaign-YENI_TARIH
+RAN_AI_SCENARIO=/path/to/compatible.cc \
+  bash docker/lab.sh native "$PWD/results/acceptance-native" \
+  docker/smoke.py --backend native --scenario /opt/ran-ai-input/scenario.cc
 ```
 
-Campaign analiz ve istatistik aşamalarını da container içinde tamamlar. Tek suite
-smoke testi için `run_adversarial_suite.py --backend native` kullanabilirsiniz.
-Bu tarif yeni bir tekrar üretimdir; eski kampanyanın ağırlıkları, yerel upstream
-değişiklikleri ve ölçüm verileri image içine alınmaz. Eski sonuçlarla bit düzeyinde
-eşitlik iddiası yoktur. Bilimsel sözleşmeler için DATASET.md ve EVALUATION.md geçerlidir.
+Use `live` and `--backend live` for the other environment. The test collects separate clean splits, trains a model, runs six conditions, and analyzes them. It needs the full lab trace/control protocol; the standalone compiler fixture cannot replace a network scenario. The manual GitHub workflow requires a repository-relative `scenario_path` input and mounts that file explicitly.
+
+Unit checks do not prove a dependency image builds or a real simulation succeeds. A new external scenario must pass actual integration acceptance before making new network-performance claims. Previous bundled-scenario results are historical observations, not validation of the new source. Avoid shared builds or integration runs while another experiment is active.

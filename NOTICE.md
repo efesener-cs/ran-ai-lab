@@ -1,11 +1,11 @@
 # Source attribution and license scope
 
-The C++ scenario `ran-ai-scenario.cc` is derived from
-`ns-o-ran-ns3-mmwave/scratch/scenario-zero.cc`. Its original GPL version 2
-header and author attributions (Andrea Lacava and Michele Polese) are retained.
-The upstream license text is reproduced in `LICENSES/GPL-2.0.txt`.
-`make_scenario.py`, `labcore/scenario_extensions.py` and `labcore/control_extensions.py`
-generate/extend this scenario; generated scenario code retains that header.
+Earlier revisions contained a C++ scenario derived from
+`ns-o-ran-ns3-mmwave/scratch/scenario-zero.cc`, with the original GPL version 2
+header and author attributions (Andrea Lacava and Michele Polese). That bundled
+scenario and its generation scripts have been removed. New scenarios are supplied
+by the caller and retain their own source attribution and license. The upstream
+GPL text remains in `LICENSES/GPL-2.0.txt` for dependency/historical attribution.
 
 FlexRIC is a separate external dependency. The inspected source tree's main
 license is Collaborative Standards Software License v1.0, reproduced for

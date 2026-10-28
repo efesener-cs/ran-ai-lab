@@ -1,206 +1,141 @@
-# Çalıştırma kılavuzu
+# Running experiments
 
-Komutlar depo kökünde çalıştırılır. Sonuçlar ve raporlar yerelde üretilir;
-GitHub'dan clone edilen depoda model, binary veya ölçüm verisi bulunmaz.
+Run commands from the repository root. Supply an external C++ scenario explicitly; there is no bundled/default topology or Python scenario generator. Models and measurements remain local.
 
-Tam container kurulumu ve bağımsız veri/eğitim/campaign komutları:
-[CONTAINERS.md](CONTAINERS.md). Aşağıdaki host kurulum beklentileri eski native
-ve hazırlanmış `flexric` container yolları içindir.
+## Start with standalone execution
 
-## Bağımlılıklar
-
-- Python 3.10+, `requirements-ai.txt`, `requirements-analysis.txt`.
-- Native yol: depoya kardeş `ns-o-ran-ns3-mmwave/build/lib` ve `build/include`,
-  g++ ve `/usr/local/include/e2sim` gerektirir. `python3 build_offline.py`
-  yerel `ran-ai-offline` binary'sini üretir.
-- Live yol: çalışan Docker erişimi, mevcut `flexric` container'ı ve container
-  içinde uyumlu, derlenmiş ns-3/O-RAN + FlexRIC + e2sim ağaçları gerektirir.
-  Container'ın hazırlanması bu projenin otomatik kurulum kapsamı dışındadır.
-- Uyumlu ağaçlar için [PROVENANCE.md](PROVENANCE.md) ve upstream yönergeleri.
-
-Runner kaynakları keşfeder. Gerekirse container yollarını açıkça verin:
+Use Linux, Python 3.10+, g++, and a compatible built native ns-3 tree. The default dependency location is the sibling `ns-o-ran-ns3-mmwave`; override it with `--ns3`.
 
 ```bash
-python3 run_live.py --duration 3 --ues 6 \
+python3 lab.py run_scenario --scenario /path/to/student.cc \
+  --ns3 /path/to/ns-o-ran-ns3-mmwave --output results/student-run \
+  -- --simTime=5 --RngSeed=41
+```
+
+The source is copied unchanged into the run, compiled, and executed in `raw/`. Scenario-specific arguments after `--` are passed unchanged. Inspect `raw/simulation.log` and `run_status.json`. A successful exit is a program-execution result, not AI or E2 verification.
+
+Compile without running:
+
+```bash
+python3 lab.py build_offline --scenario /path/to/student.cc \
+  --ns3 /path/to/ns-o-ran-ns3-mmwave
+```
+
+The printed executable comes from a source/build-specific cache, never the historical default binary. See the [scenario contract](../scenario/README.md) for compilation assumptions and cache metadata.
+
+## AI-capable scenarios
+
+The following commands require a source that explicitly implements the lab's closed 100 ms trace windows, simulator flags, and (for active control) CSV-to-RRC bridge. Python does not insert those features. Missing or invalid records fail validation. Native and live dependency trees differ; keep their performance results separate.
+
+### Clean live collection
+
+The host launcher needs Docker access and a prepared `flexric` container with compatible ns-3/O-RAN, FlexRIC, and e2sim builds. For automatic dependency-image builds, see [CONTAINERS.md](CONTAINERS.md).
+
+```bash
+python3 lab.py run_live --scenario /path/to/compatible.cc \
+  --duration 3 --ues 6 --e2-nodes 5 \
   --flexric /work/flexric-duranta \
   --ns3 /work/ns-O-RAN-flexric/mmwave-LENA-oran
-python3 check_live.py --latest
+python3 lab.py check_live --latest
 ```
 
-Çıktıda belirtilen koşu klasörünü kaydedin. RIC/E2/KPM kontrolü geçmeden
-`train_ai.py` için temiz veri kabul edilmez. RIC portları koşuya özel loopback
-adresiyle ayrılır; mevcut ilgisiz süreçler kapatılmaz. Hatalarda loglar da hosta
-kopyalanır. Runner kaynak/build cache'lerini yerinde değiştirmez.
+The host source is copied to the container without editing. Explicit dependency paths are optional if discovery finds exactly one compatible tree. `--e2-nodes` sets the expected number of distinct E2 nodes (default five), which must match the supplied topology. The launcher retrieves diagnostics even after failure. Each run uses its own build directory and RIC loopback address rather than stopping unrelated processes.
 
-## Model eğitimi ve shadow
+### Training and shadow mode
 
 ```bash
-python3 train_ai.py --run-dir results/TEMIZ_KOSU
-python3 run_live.py --duration 3 --ues 6 \
+python3 -m ai.train --run-dir results/CLEAN_RUN
+python3 lab.py run_live --scenario /path/to/compatible.cc --duration 3 --ues 6 \
   --ai-model ai/artifacts/pilot/model.json
-python3 check_ai_shadow.py --latest
+python3 lab.py check_ai_shadow --latest
 ```
 
-`TEMIZ_KOSU` yerine kendi doğrulanmış, saldırısız koşunuzun dizinini yazın.
-`train_ai.py` parametresiz çalışırsa en son E2 doğrulanmış koşuyu seçer;
-seçilen koşu saldırılıysa reddeder. Bağımsız test protokolü ayrı run'ları açıkça
-verir:
+Without explicit training input, the latest E2-verified live run is selected and attacked data is rejected. Without a separate test run, the default holds out UE groups from the same run: this is a pilot, not independent network evaluation.
 
-Native koşuları veri kaynağı olarak kabul etmek için açıkça `--allow-native`
-verin. Bu, live-E2 doğrulaması değildir; yalnız tamamlanmış, uygun native
-kontrol transport'lu koşuyu kabul eder. Validation alpha seçimi yalnız ayrı
-validation run'larıyla yapılır; test run'ları seçimde kullanılmaz:
+For separate training, validation, and test sources:
 
 ```bash
-python3 train_ai.py --allow-native \
+python3 -m ai.train --allow-native \
   --run-dir results/native-clean-seed41 \
   --validation-run-dir results/native-clean-seed53 \
   --test-run-dir results/native-clean-seed67 \
   --alpha-grid 0.1 1 10 100 1000 \
-  --output ai/artifacts/native-seed41-val53-test67
+  --output ai/artifacts/independent
 ```
 
-Train, validation ve test seed/hash bölmeleri örtüşemez. Alpha, yalnız training
-örneklerinde fit edilir; validation MAE seçimi yapar ve final model yine sadece
-training örneklerinde seçilmiş alpha ile fit edilir. Test yalnız final raporda
-kullanılır. `--validation-run-dir` explicit `--test-run-dir` ister. Validation
-vermezseniz `--alpha` kullanılır. Varsayılan aynı koşu içindeki UE bölmesi pilot
-içindir; bağımsız koşu/seed değerlendirmesi yerine geçmez. `--allow-native`
-varsayılan kapalıdır ve run'ı live-E2 kaynağına dönüştürmez.
+`--allow-native` accepts suitable completed native control runs and does not establish E2 verification. Split paths, run identities, CSV hashes, and seeds must be disjoint across groups. Alpha is fit on training data and selected by validation MAE; the final model is fit on training data only. Test data never selects alpha. Validation requires an explicit test group; otherwise `--alpha` is used. See [EVALUATION.md](EVALUATION.md).
 
-## Kontrol ve adversarial evasion
+### Native load and control
 
 ```bash
-python3 run_live.py --duration 3 --ues 6 \
-  --ai-model ai/artifacts/pilot/model.json --apply-ai-control
-python3 check_control.py --latest
+python3 lab.py run_experiment --scenario /path/to/compatible.cc \
+  --duration 3 --ues 12 --warmup 1 --seed 7 --run 1 --attacks 0
 
-python3 run_adversarial_suite.py --backend live --duration 3 --ues 6 \
-  --seed 41 --run 1 --epsilon 2 --modes none random bias fgsm pgd exact \
-  --access two_cell --predictor ridge --robust-budget-db 1 \
-  --output results/suite-seed41-epsilon2
+python3 lab.py run_controlled --scenario /path/to/compatible.cc \
+  --duration 3 --ues 6 --model ai/artifacts/pilot/model.json
 ```
 
-Altı mod: none, random, bias, fgsm, pgd, exact. None zorunludur; epsilon 0 ayrı
-suite olmalıdır. Erişim `two_cell`, `target_only`, `best_only` olabilir.
-`--predictor persistence` mevcut SINR taban çizgisini suite boyunca çalıştırır.
-Suite en az 3 ve en fazla 120 UE, en az 3 saniye ister. `--output` suite
-klasörünü belirler; koşular altına `<suite-klasör-adı>-none`,
-`<suite-klasör-adı>-pgd` gibi yazılır (ör. `results/suite-seed41-epsilon2/`
-altında `suite-seed41-epsilon2-pgd`). Manifestte koşu yolları suite köküne
-göre çözülür.
+`run_experiment` needs the application/radio trace contract. With attacks above zero, the source must also implement scheduled UDP load via `--attackPlan`; these events differ from model-input evasion. `run_controlled` needs the RRC command/evidence bridge. Both snapshot the source and select its compiled executable before execution. `--ns3` can select a different built native dependency tree.
 
-Hedef mevcut pencerenin tahmin sıralamasıdır; gelecekteki SINR kullanılmaz.
-PGD varsayılan 5 başlangıç ve 10 projeksiyon adımı kullanır, en iyi iteratı
-saklar. `--max-step-db` yalnız pencere içindeki bias farkını sınırlar; saldırı
-etkisiz olduğunda bias sıfırlanır ve bu global slew limiti değildir. Exact
-optimum sabit geçmiş altında tek pencerenin skor marjını çözer.
-
-`--robust-budget-db` bir-adımlı bias aralığında en kötü skor kazancı
-histerezisten düşükse handover önerisini durdurur. Model ve diğer özelliklerin
-güvenilir olduğunu varsayar; QoS ya da sonraki politika yörüngesine garanti
-vermez. Ayrıntı: [EVALUATION.md](EVALUATION.md).
-
-Aktif kontrolde otomatik handover ayarları değişir; kontrolsüz DynamicTtt
-koşusuyla doğrudan karşılaştırılmaz. Model çıkarımında simülasyon bariyeri
-bekler; batch işleme süresi ölçülür, fakat gerçek near-RT uçtan uca gecikme ölçülmez. Kontrol API isteği ve daha sonraki
-CONNECTED_NORMALLY/hedef hücre teyidi ayrı kaydedilir. Bu E2 RC değildir.
-
-Belirli bir koşunun doğrulanması (live olmayan koşuda check_live kullanılmaz):
+### Matched evasion suites
 
 ```bash
-python3 check_live.py results/KOSU
-python3 check_control.py results/KOSU
-python3 check_evasion.py results/KOSU
+python3 lab.py run_adversarial_suite --scenario /path/to/compatible.cc \
+  --backend live --duration 3 --ues 6 --seed 41 --epsilon 2 \
+  --model ai/artifacts/pilot/model.json \
+  --modes none random bias fgsm pgd exact --access two_cell \
+  --predictor ridge --robust-budget-db 1 --output results/suite41
 ```
 
-`passed=true` hattın doğru çalıştığıdır; saldırı başarısı veya QoS kaybı değildir.
-Ham SINR bias bütçesiyle türetilmiş temporal fark sınırı farklıdır. Audit
-zamanı pencere sonundaki karardır; `prior_decision_*` ise uygulama penceresi
-başlangıcına eşleşir. Missing audit ile açıkça pasif audit aynı değildir.
+Use `--backend native` for host control. Suites require 3–120 UEs, at least three seconds, distinct modes, and exactly one `none`. Use a separate epsilon-zero control suite. Access scopes are `two_cell`, `target_only`, and `best_only`. Persistence uses current SINR rather than a learned residual. Evaluation seeds must be held out from model fitting and selection unless exploratory reuse is explicitly requested.
 
-## Campaign, CSV ve grafikler
+The suite captures `scenario.cc`, records `scenario_sha256`, and gives every condition the same snapshot. Native executable hashes must also match. Each run preserves source identity in its status. Existing data collected with the removed bundled scenario remains historical data.
 
-Önce planı üretmek için:
+FGSM takes one step; PGD defaults to ten steps and five starts. `exact` optimizes a single-window ranking margin with fixed history, not throughput. `--max-step-db` limits active bias changes but bias resets outside attack support. A robust decision budget bounds one-step forecast gain under trusted-model/other-feature assumptions; it does not guarantee QoS or future decisions.
+
+Active control changes handover behavior, so the clean run needs matching settings. Simulation may wait for commands. CSV-to-RRC control is not E2 RC, and 100 ms simulation windows are not an end-to-end wall-clock latency guarantee.
+
+## Campaigns
 
 ```bash
-python3 collect_campaign.py --backend native --duration 10 --ues 24 \
+python3 lab.py collect_campaign --scenario /path/to/compatible.cc \
+  --backend native --model ai/artifacts/pilot/model.json --duration 10 --ues 24 \
   --seeds 41 53 67 --epsilons 0 2 --predictors ridge persistence \
-  --robust-budgets-db off 2 --modes none random bias fgsm pgd exact \
-  --access two_cell --restarts 5 --plan-only
+  --robust-budgets-db off 2 --modes none random bias fgsm pgd exact --plan-only
+python3 lab.py collect_campaign --resume results/campaign-TIMESTAMP
 ```
 
-Çıktıda verilen campaign yoluyla çalıştırın/devam edin:
+Inspect the newly printed plan before resuming it. This example plans 24 suites / 144 runs. The campaign captures the scenario once and checks the snapshot on resume and before every job. Editing the original source does not change the plan. A changed snapshot is rejected even with `--allow-code-change`, which applies to reviewed repository-source revisions only.
+
+Legacy plans without a scenario snapshot cannot be resumed by the new runner. Keep their measurements for analysis and start a new explicit-source plan for new collection. Completed suites are skipped, incomplete suites get a new attempt, and failed evidence remains preserved.
+
+## Verification, analysis, and replay
 
 ```bash
-python3 collect_campaign.py --resume results/campaign-TARIH
-```
-
-Bu örnek 24 suite/144 koşu planlar; simülasyon saati çalışma süresi değildir.
-Robust `off` ile `0` ayrı strata'dır: off politika savunmasını kapatır, 0 ise
-yalnız sıfır bias aralığında sertifika uygular. Access modu ve predictor da ayrı
-strata olarak raporlanır. Tamamlanan suite'ler atlanır; yarım suite yeni
-attempt'te seçili modlarıyla tekrarlanır. Eski planlarda `modes` alanı yoksa
-resume dört eski modu (none, random, fgsm, pgd) kullanır. Loglar ve başarısız
-attempt'ler korunur. Tamamlanınca `analysis/` ve `statistics/` otomatik üretilir.
-
-Mevcut suite'leri ayrıca analiz etmek için:
-
-```bash
-python3 analyze_experiments.py results/SUITE --output results/analysis-local
-xdg-open results/analysis-local/index.html
-python3 summarize_campaign.py results/analysis-local/run_summary.csv \
+python3 lab.py check_live results/LIVE_RUN
+python3 lab.py check_control results/LIVE_RUN
+python3 lab.py check_control results/NATIVE_RUN --native
+python3 lab.py check_evasion results/RUN
+python3 lab.py analyze_experiments results/SUITE --output results/analysis-local
+python3 lab.py summarize_campaign results/analysis-local/run_summary.csv \
   --output results/analysis-local/statistics
-python3 evaluate_replay.py --model ai/artifacts/native-seed41-val53-test67/model.json \
-  --run-dir results/native-clean-seed67 --allow-native --epsilon 2 \
-  --access two_cell --robust-budget-db 1 --output results/replay-seed67
+python3 lab.py evaluate_replay --model ai/artifacts/pilot/model.json \
+  --run-dir results/CLEAN_RUN --epsilon 2 --output results/replay
 ```
 
-Birden çok suite argümanı verilebilir. Native/live ve farklı UE/süre
-konfigürasyonları ayrı değerlendirilir. Uygulama CSV'si goodput içindir;
-radyo CSV'sindeki uygulama değerleri dört hücrede tekrarlanır.
-Kampanya özeti clean-paired RX farkı ve seed-cluster bootstrap raporlar; tek
-seed için güven aralığı üretmez. AML aynı-window alanları audit penceresini,
-`prior_decision_*` uygulama başlangıcındaki kararı gösterir; teyit zamanı tüm
-pencere boyunca serving-cell kanıtı değildir. İstatistik için en az iki
-bağımsız seed kümesi gerekir; aynı seed içindeki tekrarlar bağımsız örnek sayılmaz.
+Evidence validity is separate from attack effectiveness. Submission and later target-connection confirmation are separate outcomes. Traffic totals use the application table, not repeated per-cell values in radio rows. Keep backend, pipeline/scenario, predictor, access, defense, duration, UE count, and epsilon strata separate. Seed-cluster intervals require independent seeds; repeated clean runs at different budgets are not independent trials.
 
-`evaluate_replay.py` kayıtlı temiz telemetriyi bellekte perturb ederek ridge ve
-persistence modellerini altı modda ayrı ayrı inceler. Bölme provenance'ı
-varsayılan doğrulanır; yalnız provenance eksik eski modelde açıkça
-`--allow-unverified-split` verilebilir. `--allow-native` native kaynaklara izin
-verir. Etiket/ground truth temiz ölçülmüş sonraki pencere SINR'ıdır; model girdisi
-sentetik olarak değişir, ölçülmüş trafik veya radyo durumu değişmez. Replay,
-nedensel QoS/throughput etkisi ya da handover başarısı ölçmez ve ağ kontrolü
-uygulamaz. Çıktı `replay_metrics.csv` ve `replay_metrics.json` üretir.
-Ayrıntılı alanlar ve sızıntısız train/test bölmesi: [DATASET.md](DATASET.md).
+Replay changes inputs in memory and does not change measured traffic or apply network controls. Split provenance is checked; legacy missing provenance requires explicit `--allow-unverified-split`. Use `--allow-native` when appropriate. See [DATASET.md](DATASET.md) for timing, missingness, and leakage rules.
 
-## PostgreSQL ve Grafana
+## Optional database layer
 
-CSV/PNG/HTML üretimi DB gerektirmez. Analiz her koşu için `postgres/*.sql`
-import dosyaları hazırlar. Kendi erişebildiğiniz veritabanıyla:
+CSV, PNG, and HTML outputs need no database. Analysis generates per-run SQL import files under `postgres/`. Use your own PostgreSQL connection to import them. A changed CSV hash under an existing run ID is rejected; keep raw and enriched imports distinct. Panel examples are in `database/grafana_step5.sql`. Display dates are anchors, not capture timestamps. TimescaleDB is optional; generating SQL does not verify database or Grafana connectivity.
 
-```bash
-for file in results/analysis-local/postgres/*.sql; do
-  psql -X -v ON_ERROR_STOP=1 -d ran_ai -f "$file" || break
-done
-```
-
-Aynı run_id farklı CSV hash'iyle tekrar import edilirse işlem durdurulur;
-ham ve zenginleştirilmiş importları karıştırmayın. Parola/token Git'e yazılmaz.
-Grafana PostgreSQL panel sorguları: `database/grafana_step5.sql`.
-Time-series sorgusundaki tarih yalnız görüntüleme ankrajıdır, gerçek yakalama
-zamanı değildir. TimescaleDB zorunlu değildir. SQL üretimi, gerçek DB importunun
-veya Grafana bağlantısının doğrulanmış olduğu anlamına gelmez.
-
-## Testler ve kaynak üretimi
+## Checks
 
 ```bash
 python3 -m unittest discover -p 'test_*.py'
-python3 scripts/check_publish.py
+git diff --check
 ```
 
-Kaydedilmiş pilot gerektiren testler veri yoksa atlanır. Model/evasion birim
-testleri sentetik fixture kullanır. Tam Docker/ns-3 simülasyonu CI'da çalışmaz.
-`make_scenario.py` yalnız upstream scenario-zero ağacı mevcutken senaryoyu
-tekrar üretmek içindir; normal çalıştırma için depodaki C++ kaynak kullanılır.
+Tests use synthetic traces and small compiler fixtures; none require a saved pilot or an external ns-3 source tree. The generic external-source test compiles and executes a tiny standalone C++ fixture against a synthetic library. This exercises input/copy/build/argument handling, not a real radio simulation. Full Docker/ns-3 acceptance requires a compatible supplied scenario.

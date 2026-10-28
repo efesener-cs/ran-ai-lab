@@ -1,89 +1,86 @@
 # RAN AI Lab
 
-ns-3, FlexRIC ve bir SINR tahmin modeliyle RAN telemetrisine adversarial
-müdahaleleri inceleyen araştırma laboratuvarı.
+A lab for studying whether manipulated radio measurements change AI-assisted cell selection and simulated application traffic. The model forecasts the next 100 ms of SINR; a separate policy decides whether to recommend a cell change. Clean and attacked conditions are compared with matched settings.
 
-- 4 NR hücresi, LTE anchor/EPC, hareketli UE'ler ve karma TCP/UDP trafik.
-- Canlı near-RT RIC, E2 ve KPM izleme hattı.
-- Sonraki 100 ms SINR tahmini için residual Ridge modeli.
-- Shadow kararları veya atomik CSV → ns-3 RRC API kontrolü.
-- Eşlenmiş none/random/bias/FGSM/PGD/exact telemetri deneyleri ve persistence taban çizgisi.
-- CSV veri toplama, doğrulama, PNG/HTML görselleştirme ve PostgreSQL import üretimi.
+## Bring your own scenario
 
-Bu bir saha kalibrasyonlu digital twin veya üretim 6G sistemi değildir.
-Model kapanmış ns-3 trace pencerelerinden beslenir; KPM callback'inden inference
-ve E2 RC kontrolü uygulanmaz. Adversarial deneyler modelin gördüğü SINR
-telemetrisine sınırlı bias ekler; gerçek RF jamming veya dış hedefe flood yoktur.
-Tahmin/sıralama değişimi, gerçek kontrol teyidi ve QoS etkisi ayrı ölçülür.
+Supply a self-contained ns-3 C++ source. The project compiles and runs it unchanged; it no longer generates or bundles a network topology.
 
-## Başlangıç
+With a compatible native ns-3 tree already built:
 
-Hostta ns-3/Python kurmadan, veri üretiminden campaign analizine kadar çalıştırmak
-için [container tekrar üretim kılavuzunu](docs/CONTAINERS.md) kullanın.
-`Dockerfile` ayrı `native` ve `live` hedefleri sağlar; mevcut hazırlanmış container
-gerektiren aşağıdaki yol da desteklenir.
+```bash
+python3 lab.py run_scenario --scenario /path/to/scenario.cc \
+  --ns3 /path/to/ns-o-ran-ns3-mmwave --output results/my-scenario \
+  -- --simTime=5 --RngSeed=41
+```
 
-Python 3.10+, NumPy ve analiz için matplotlib gerekir. Simülasyon ayrıca
-uyumlu ve önceden derlenmiş ns-3/O-RAN, FlexRIC ve e2sim bağımlılıkları ister.
-Bunlar depoda bulunmaz; standart bir Ubuntu container'ı yeterli değildir.
+Arguments after `--` go directly to the supplied program. This standalone path records execution and raw outputs without assuming an AI, telemetry, or RIC interface.
+
+For AI experiments, the scenario must implement the [measurement and control contract](scenario/README.md). For example, a compatible source can be used with:
+
+```bash
+python3 lab.py run_adversarial_suite --scenario /path/to/scenario.cc \
+  --backend native --model ai/artifacts/pilot/model.json \
+  --duration 3 --ues 6 --seed 41 --epsilon 2
+```
+
+Train the model on compatible clean data first; the model path above is a local artifact, not a bundled pretrained policy.
+
+There is no automatic conversion of an arbitrary ns-3 example into a closed-loop AI experiment. A missing source or unsupported trace/control interface fails explicitly.
+
+## Data and decision path
+
+```text
+Supplied ns-3 scenario → closed measurement windows → optional input attack
+                                                        ↓
+                                                 SINR forecast
+                                                        ↓
+                                                cell-selection policy
+                                                        ↓
+                                      shadow log or CSV → ns-3 RRC
+                                                        ↓
+                                      connection and traffic evidence
+```
+
+The live backend adds FlexRIC/E2/KPM monitoring. AI input still comes from ns-3 trace windows and active control uses a CSV bridge. Direct KPM-to-model input and E2 RC actuation are not implemented. Forecast ranking, command changes, handover confirmation, and received traffic are separate outcomes. Changing a telemetry value does not directly change the RF signal.
+
+## Setup and checks
+
+Linux and Python 3.10+ are supported. Simulation also needs compatible built ns-3/O-RAN libraries; live operation additionally requires FlexRIC and e2sim. The [container guide](docs/CONTAINERS.md) builds those dependencies without embedding a default scenario.
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
 python3 -m pip install -r requirements-ai.txt -r requirements-analysis.txt
 python3 -m unittest discover -p 'test_*.py'
+git diff --check
 ```
 
-Kaydedilmiş telemetri veya harici ns-3 kaynağı gerektiren testler temiz checkout'ta atlanır.
-Diğer testler sentetik girdilerle Docker/veritabanı olmadan çalışır.
+Tests use synthetic measurements and small C/C++ fixtures. They need a compatible compiler but no saved campaign, external ns-3 source tree, Docker daemon, or network simulation.
 
-Mevcut, hazırlanmış `flexric` container'ıyla ilk temiz veri toplama:
+## Layout
 
-```bash
-python3 run_live.py --duration 3 --ues 6
-python3 check_live.py --latest
-python3 train_ai.py
-```
+| Location | Responsibility |
+|---|---|
+| `lab.py` | Shared CLI; `python3 lab.py --help` lists commands. |
+| `scenario/` | Validate supplied C++ sources, preserve exact snapshots, and compile native executables. |
+| `simulation/` | Standalone/native/live launchers, process supervision, suites, campaigns, and traffic schedules. |
+| `ai/` | Training, replay, shadow inference, features, policy, attacks, and robustness bounds. |
+| `datasets/` | Measurement export. |
+| `analysis/` | Paired comparisons, plots, and seed-level statistics. |
+| `checks/` | Monitoring, control, shadow, and evasion evidence validation. |
+| `labcore/` | Shared paths, command dispatch, fingerprints, runtime packaging, and dependency helpers. |
+| `tests/`, `docker/`, `database/` | Tests, container tooling, and optional database integration. |
 
-Model yerelde oluşturulduktan sonra eşlenmiş canlı deney (suite en az 3 UE ister):
+Models, result directories, reports, exports, and build caches remain local and are excluded from Git. Earlier experiment results describe their original scenarios; they are not evidence that a new supplied scenario has been validated.
 
-```bash
-python3 run_adversarial_suite.py --backend live --duration 3 --ues 6 \
-  --seed 41 --run 1 --epsilon 2
-```
+## Documentation
 
-Tam kurulum beklentileri, eğitim, kontrol, campaign ve analiz komutları:
-[Çalıştırma kılavuzu](docs/RUNNING.md).
-
-## Belgeler
-
-- [Veri sözlüğü ve veri bölme kuralları](docs/DATASET.md)
-- [Araştırma değerlendirme protokolü ve sınırlar](docs/EVALUATION.md)
-- [Kaynak/dependency provenance](docs/PROVENANCE.md)
-- [Atıflar ve lisans kapsamı](NOTICE.md)
-- [GitHub yayın hazırlığı](docs/GITHUB_PREPARATION.md)
-- [Araştırma kaynakları](docs/RESEARCH.md)
-
-`reports/rapor.md`, deney sonuçları, gerçek örnek CSV, eğitilmiş modeller, loglar,
-binary'ler ve üretilmiş SQL dosyaları Git dışında tutulur. Yerelde üretilecek
-CSV/grafik/rapor yolları komut çıktısında gösterilir; sonuçlar depoyla dağıtılmaz.
-Upstream lisansları korunmuştur; yeni kaynaklar için repository çapında lisans
-henüz seçilmemiştir. Ayrıntı: [NOTICE.md](NOTICE.md).
-
-## Dizin yapısı
-
-- Kök dizindeki CLI betikleri: çalıştırma, eğitim, veri dışa aktarma ve analiz komutları.
-- `ai/`: model, telemetri, politika ve adversarial saldırı mantığı.
-- `labcore/`: ortak kaynak keşfi, derleme, senaryo ve deney yardımcıları.
-  `native_runner.py`, native simülasyon komutlarını, loglamayı, veri dışa aktarmayı
-  ve atomik koşu durumu yazımını ortaklaştırır.
-- `tests/`: birim testleri ve sentetik fixture dosyaları.
-- `docs/`: çalıştırma kılavuzları ve araştırma kaynakları.
-- `database/`, `examples/`, `scripts/`: SQL, örnek ayarlar ve yayın kontrolü.
-- `results/`, `reports/`, `exports/`, `validation/`, `host-build/`: Git dışında tutulan yerel çıktılar.
-
-Mevcut CLI komutları ve kökten test keşfi komutu değişmemiştir.
-
-`run_live.py`, `run_controlled.py` ve `run_experiment.py` argüman okuma ile
-çalıştırmayı ayırır; import edilmeleri deney başlatmaz. Live runner container
-hazırlığını ve dosya kopyalamayı ayrı fonksiyonlarda tutar.
+- [Scenario input contract](scenario/README.md)
+- [Running experiments](docs/RUNNING.md)
+- [Container setup](docs/CONTAINERS.md)
+- [Dataset fields and split rules](docs/DATASET.md)
+- [Evaluation protocol](docs/EVALUATION.md)
+- [Related work](docs/RESEARCH.md)
+- [Dependency provenance](docs/PROVENANCE.md)
+- [Attribution and license scope](NOTICE.md)

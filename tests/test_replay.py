@@ -6,7 +6,7 @@ import unittest
 
 from ai.data import load_observations, supervised
 from ai.runtime import RuntimeForecaster
-from evaluate_replay import replay_metrics, split_check, write_results
+from ai.evaluate_replay import replay_metrics, split_check, write_results
 
 
 FIXTURE = Path(__file__).resolve().parents[1] / 'tests/fixtures/model.json'

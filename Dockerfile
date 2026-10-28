@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY docker/requirements.txt /opt/requirements.txt
 RUN python3 -m pip install --no-cache-dir -r /opt/requirements.txt \
     && python3 -m pip freeze > /opt/python-packages.txt
-ENV MPLBACKEND=Agg PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ENV MPLBACKEND=Agg PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
+    RAN_AI_BUILD_ROOT=/opt/ran-ai-lab/results/.scenario-builds
 WORKDIR /opt/ran-ai-lab
 ENTRYPOINT ["python3"]
 CMD ["-m", "unittest", "discover", "-p", "test_*.py"]
@@ -32,8 +33,7 @@ RUN git clone https://github.com/efesener-cs/ns-o-ran-ns3-mmwave.git /opt/ns-o-r
     && USER=builder ./ns3 configure --disable-python-bindings --disable-examples --disable-gtk \
     && USER=builder ./ns3 build -j "$BUILD_JOBS"
 COPY . .
-RUN python3 build_offline.py \
-    && printf 'ns3=%s\ne2sim=%s\n' "$NS3_REV" "$E2SIM_REV" > /opt/dependency-revisions.txt
+RUN printf 'ns3=%s\ne2sim=%s\n' "$NS3_REV" "$E2SIM_REV" > /opt/dependency-revisions.txt
 
 FROM base AS live
 ARG BUILD_JOBS=2
