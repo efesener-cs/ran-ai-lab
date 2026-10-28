@@ -70,9 +70,15 @@ henüz seçilmemiştir. Ayrıntı: [NOTICE.md](NOTICE.md).
 - Kök dizindeki CLI betikleri: çalıştırma, eğitim, veri dışa aktarma ve analiz komutları.
 - `ai/`: model, telemetri, politika ve adversarial saldırı mantığı.
 - `labcore/`: ortak kaynak keşfi, derleme, senaryo ve deney yardımcıları.
+  `native_runner.py`, native simülasyon komutlarını, loglamayı, veri dışa aktarmayı
+  ve atomik koşu durumu yazımını ortaklaştırır.
 - `tests/`: birim testleri ve sentetik fixture dosyaları.
 - `docs/`: çalıştırma kılavuzları ve araştırma kaynakları.
 - `database/`, `examples/`, `scripts/`: SQL, örnek ayarlar ve yayın kontrolü.
 - `results/`, `reports/`, `exports/`, `validation/`, `host-build/`: Git dışında tutulan yerel çıktılar.
 
 Mevcut CLI komutları ve kökten test keşfi komutu değişmemiştir.
+
+`run_live.py`, `run_controlled.py` ve `run_experiment.py` argüman okuma ile
+çalıştırmayı ayırır; import edilmeleri deney başlatmaz. Live runner container
+hazırlığını ve dosya kopyalamayı ayrı fonksiyonlarda tutar.
