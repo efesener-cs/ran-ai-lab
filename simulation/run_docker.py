@@ -20,6 +20,8 @@ def build_parser():
     )
     p.add_argument('--scenario', type=Path, required=True, help='External self-contained C++ scenario')
     p.add_argument('--container', default='flexric', help='Prepared Docker container name')
+    p.add_argument('--runner', choices=['live', 'rf'], default='live',
+                   help='live RIC supervisor or synthetic receiver-IQ RF experiment')
     p.add_argument('--output', type=Path, help='New host result directory')
     p.add_argument('--ai-model', type=Path, help='Trained model JSON; omit for measurement-only runs')
     p.add_argument('--evasion-config', type=Path, help='Bounded model-input attack configuration JSON')
@@ -63,6 +65,8 @@ def prepare_container(lab, args, remote, extra):
         extra += ['--evasion-config', remote + '/evasion.json']
     mounts = json.loads(subprocess.check_output(['docker', 'inspect', '-f', '{{json .Mounts}}', args.container], text=True))
     for mount in mounts or []:
+        if args.runner == 'rf':
+            continue
         if mount.get('Type') == 'bind' and mount.get('Destination') not in ['/var/run/docker.sock']:
             extra += ['--search-root', mount['Destination']]
 
@@ -71,6 +75,8 @@ def main(argv=None):
     args, extra = parse_args(argv)
     lab = ROOT
     read_source(args.scenario)
+    if args.runner == 'rf' and (args.ai_model or args.evasion_config or args.apply_ai_control):
+        argument_error('RF runner trains its own RF models; live AI/control options do not apply')
     if args.evasion_config and (not args.evasion_config.is_file() or args.ai_model is None):
         argument_error('--evasion-config requires an existing JSON file and --ai-model')
     if args.apply_ai_control and args.ai_model is None:
@@ -90,10 +96,12 @@ def main(argv=None):
     print('Container workdir:', remote, flush=True)
     code = 1
     try:
-        code = subprocess.call(['docker', 'exec', args.container, 'python3', remote + '/lab.py', 'run_live', '--output', remote + '/result', *extra])
+        runner = 'run_rf' if args.runner == 'rf' else 'run_live'
+        code = subprocess.call(['docker', 'exec', args.container, 'python3', remote + '/lab.py', runner, '--output', remote + '/result', *extra])
     except KeyboardInterrupt:
         code = 130
-        subprocess.call(['docker', 'exec', args.container, 'python3', '-c', 'import os,signal,sys; from pathlib import Path; os.kill(int(Path(sys.argv[1]).read_text()),signal.SIGTERM)', remote + '/result/work/controller.pid'])
+        pid = '/controller.pid' if args.runner == 'rf' else '/work/controller.pid'
+        subprocess.call(['docker', 'exec', args.container, 'python3', '-c', 'import os,signal,sys; from pathlib import Path; os.kill(int(Path(sys.argv[1]).read_text()),signal.SIGTERM)', remote + '/result' + pid])
     finally:
         out.mkdir(parents=True, exist_ok=True)
         copied = subprocess.call(['docker', 'cp', args.container + ':' + remote + '/result/.', str(out)])

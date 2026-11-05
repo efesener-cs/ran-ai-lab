@@ -54,5 +54,36 @@ class DockerLauncherTests(unittest.TestCase):
             self.assertIn(unittest.mock.call('flexric', source, '/tmp/test-lab/scenario.cc'), copy.call_args_list)
             self.assertEqual(extra, ['--scenario', '/tmp/test-lab/scenario.cc'])
 
+    def test_rf_runner_uses_rf_command_and_preserves_attack_arguments(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'rf.cc'
+            source.write_text('int main() { return 0; }\n')
+            with patch.object(runner, 'prepare_container'), \
+                    patch.object(runner.subprocess, 'call', side_effect=[0, 0]) as call, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    runner.main(['--runner', 'rf', '--container', 'ran-lab',
+                                 '--scenario', str(source), '--output', str(root / 'rf-test'),
+                                 '--psr-db', '-20', '-10', '--epochs', '80'])
+            self.assertEqual(raised.exception.code, 0)
+            command = call.call_args_list[0].args[0]
+            self.assertEqual(command[:3], ['docker', 'exec', 'ran-lab'])
+            self.assertIn('run_rf', command)
+            self.assertNotIn('run_live', command)
+            self.assertEqual(command[-5:], ['--psr-db', '-20', '-10', '--epochs', '80'])
+
+    def test_rf_preparation_does_not_forward_live_search_roots(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'rf.cc'
+            source.write_text('int main() { return 0; }\n')
+            args, extra = runner.parse_args(['--runner', 'rf', '--scenario', str(source)])
+            mounts = '[{"Type":"bind","Destination":"/work"}]'
+            with patch.object(runner.subprocess, 'check_output', side_effect=['true', mounts]), \
+                    patch.object(runner.subprocess, 'run'), \
+                    patch.object(runner, 'copy_to_container'):
+                runner.prepare_container(ROOT, args, '/tmp/test-rf', extra)
+            self.assertEqual(extra, ['--scenario', '/tmp/test-rf/scenario.cc'])
+
 if __name__ == '__main__':
     unittest.main()

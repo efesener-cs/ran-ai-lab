@@ -79,3 +79,11 @@ Missing traces or invalid evidence cause the AI pipeline to fail. Keep using `ru
 A suite captures its selected source in `scenario.cc` and stores `scenario_sha256`. Every condition receives that snapshot; native conditions must also match the recorded executable hash. A campaign captures the source once and verifies the snapshot before each job and on resume. Editing the original file does not change an existing plan. Editing the captured file is rejected even with `--allow-code-change`.
 
 Legacy campaigns without an external scenario snapshot cannot be resumed through the new runner. Existing measurements remain available for analysis; start a new campaign with an explicit source for new collection. Historical results from the removed bundled scenario do not validate a newly supplied one.
+
+## Explicit opt-in benchmark inputs
+
+The user-requested sources in `examples/scenarios/` are versioned inputs to the
+separate `run-all-scenarios.sh` workflow. They are not a fallback for standalone,
+live or forecasting runners; those still require explicit compatible sources.
+The RF source is analytical IQ data, and the IP source is a standalone wired
+network without the RAN telemetry/control contract. See [batch usage](../docs/BATCH.md).

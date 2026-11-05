@@ -4,6 +4,18 @@ A CSV-based lab for testing whether bounded SINR telemetry manipulation changes 
 
 `main` runs directly on Linux. This optional `feat/docker-support` branch adds dependency images and a prepared-container launcher. It retains CSV collection without database imports or automatic EDA/statistics. See [container setup](docs/CONTAINERS.md).
 
+## Run all requested RF/IP benchmarks
+
+```bash
+bash run-all-scenarios.sh
+```
+
+Uses the existing `ran-lab` container and tracked opt-in inputs in
+`examples/scenarios/`, chooses a fresh result directory, runs every RF/IP mode,
+checks evidence and exports labeled detector tables. No manual input copying or
+old-result deletion is needed. See [batch execution](docs/BATCH.md) for SDK
+selection, logs, scope and host/quick options.
+
 ## Supply a scenario
 
 Use a self-contained C++ source and an already built compatible ns-3 tree:
@@ -76,6 +88,9 @@ Models, measurements, reports, exports, and build products remain local and excl
 - [CSV outputs and field meanings](docs/DATASET.md)
 - [Experiment protocol](docs/EVALUATION.md)
 - [Related work](docs/RESEARCH.md)
+- [Run all provided scenarios](docs/BATCH.md)
+- [RF sensing, AMC and channel-estimation attacks](docs/RF.md)
+- [Non-RAN IP traffic attacks and detection labels](docs/IP_ATTACKS.md)
 - [Dependency provenance](docs/PROVENANCE.md)
 - [Attribution](NOTICE.md)
 
