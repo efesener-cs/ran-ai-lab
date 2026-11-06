@@ -79,19 +79,29 @@ def prepare(args):
     base=args.output_root.resolve()
     if not base.is_relative_to(STORE.resolve()):raise ValueError('New bulk outputs must be under '+str(STORE))
     base.mkdir(parents=True,exist_ok=True)
-    root=base/('development-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f'));root.mkdir()
+    root=base/(('collection-' if args.collection else 'development-')+datetime.now().strftime('%Y%m%d-%H%M%S-%f'));root.mkdir()
     copy_runtime(ROOT,root/'runtime');(root/'inputs').mkdir()
     scenario=Path(args.scenario).resolve(strict=True);shutil.copyfile(scenario,root/'inputs/ip-workload.cc')
     sdk=Path(args.ns3).resolve(strict=True)
     binary=build_native(root/'inputs/ip-workload.cc',ns3=sdk,build_root=STORE/'build-cache/research-campaign')
+    if args.collection:
+        from simulation.research_plan import collection_recipes
+        jobs,partition=collection_recipes()
+        for name in ('rf-ai-frames.cc','training-data-attacks.cc'):shutil.copyfile(ROOT/'examples/scenarios'/name,root/'inputs'/name)
+        (root/'protocol').mkdir()
+        for name in ('DATASET_RESEARCH_PROTOCOL.md','ATTACK_COVERAGE.md','OFFLINE_CAMPAIGN.md','RF_RESEARCH.md','IP_RESEARCH.md','RAN_RESEARCH_READINESS.md'):
+            shutil.copyfile(ROOT/'docs'/name,root/'protocol'/name)
+    else:jobs,partition=recipes(args.development_seeds,args.expanded_only),{}
     plan=dict(format='research-development-v1',stage='development',scientific_status='unvalidated-development',
               state='prepared',created_utc=datetime.now(timezone.utc).isoformat(),workers=args.workers,cpus=cores(args.workers),
               runtime_sha256=source_hashes(root/'runtime'),scenario_sha256=sha(root/'inputs/ip-workload.cc'),
               binary=str(binary),binary_sha256=sha(binary),sdk=str(sdk),
               sdk_libraries={p.name:sha(p) for p in (sdk/'build/lib').glob('*.so')},
-              minimum_free_gib=50,minimum_available_ram_gib=3,maximum_aggregate_rss_gib=6,jobs=recipes(args.development_seeds,args.expanded_only),sessions=[],
+              minimum_free_gib=50,minimum_available_ram_gib=3,maximum_aggregate_rss_gib=6,jobs=jobs,sessions=[],
               time_limit_removed_by_user=True,publication_approved=False,
-              scope='Synthetic wired transport/session workloads and separate analytical RF tasks; no RIC/OTA acceptance')
+              scope='Synthetic wired transport/session workloads and separate analytical RF tasks; no RIC/OTA acceptance',source_git_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip())
+    if args.collection:
+        plan.update(stage='research_collection',scientific_status='preregistered-synthetic-not-externally-validated',seed_partition=partition,output_root=str(root),maximum_output_gib=100,primary_prediction_target='categorical/multilabel attack family',input_sha256={p.name:sha(p) for p in (root/'inputs').iterdir()},protocol_sha256={p.name:sha(p) for p in (root/'protocol').iterdir()})
     save(root/'campaign.json',plan)
     print('Campaign',root,flush=True)
     return root
@@ -100,6 +110,10 @@ def prepare(args):
 def verify(root,plan):
     if source_hashes(root/'runtime')!=plan['runtime_sha256'] or sha(root/'inputs/ip-workload.cc')!=plan['scenario_sha256']:
         raise ValueError('Frozen research source changed')
+    for name,value in plan.get('input_sha256',{}).items():
+        if sha(root/'inputs'/name)!=value:raise ValueError('Frozen reference input changed')
+    for name,value in plan.get('protocol_sha256',{}).items():
+        if sha(root/'protocol'/name)!=value:raise ValueError('Frozen protocol changed')
     if sha(plan['binary'])!=plan['binary_sha256']:raise ValueError('Frozen binary changed')
     for name,value in plan['sdk_libraries'].items():
         if sha(Path(plan['sdk'])/'build/lib'/name)!=value:raise ValueError('SDK library changed')
@@ -113,11 +127,20 @@ def work(root,job_id,attempt):
     resource.setrlimit(resource.RLIMIT_CORE,(0,0))
     if job['kind']=='ip':
         command=[plan['binary'],'--simTime='+str(job['sim_time']),'--warmup='+str(job['warmup']),
-                 '--RngSeed='+str(job['seed']),'--attack='+job['attack'],'--environment='+job['environment'],'--regime='+job['regime']]
-    else:
+                 '--RngSeed='+str(job['seed']),'--attack='+job['attack'],'--environment='+job['environment'],'--regime='+job['regime'],'--pcap='+str(job.get('pcap_audit',False)).lower()]
+    elif job['kind']=='rf':
         command=[sys.executable,'-m','datasets.generate_rf_research','--task',job['task'],'--seed',str(job['seed']),
-                 '--samples',str(job['samples']),'--split',job['split'],'--output',str(result)]
+                 '--samples',str(job['samples']),'--split',job['split'],'--output',str(result),*job.get('generator_args',[])]
         result.rmdir() # RF generator atomically refuses existing output directories.
+    elif job['kind']=='rf_attack':
+        result.rmdir()
+        command=[sys.executable,str(root/'runtime/lab.py'),'run_rf','--scenario',str(root/'inputs/rf-ai-frames.cc'),'--output',str(result),'--rf-profile',job['profile'],'--snr-db',str(job['snr_db']),'--train-samples','3000','--eval-samples','1000','--length','128','--epochs','80','--steps','30','--seeds',*map(str,job['seeds']),'--psr-db','-20','-10','-6']
+    elif job['kind']=='training_attack':
+        parent=next(j for j in plan['jobs'] if j['id']==job['parent'])
+        if parent['state']!='complete':raise ValueError('Verified parent must complete first')
+        result.rmdir()
+        command=[sys.executable,str(root/'runtime/lab.py'),'run_training_attacks','--rf-run',str(root/parent['attempts'][-1]['path']/'result'),'--scenario',str(root/'inputs/training-data-attacks.cc'),'--output',str(result),'--epochs','80','--attack-seed',str(job['attack_seed'])]
+    else:raise ValueError('Unknown research job kind')
     started=time.monotonic()
     with (attempt/'execution.log').open('w') as log:
         subprocess.run(command,cwd=result if job['kind']=='ip' else attempt,env=environment(root),stdout=log,stderr=subprocess.STDOUT,check=True)
@@ -126,8 +149,20 @@ def work(root,job_id,attempt):
     if job['kind']=='ip':
         from checks.check_ip_research import check
         evidence=check(result)
-    else:
+        if job.get('pcap_audit'):
+            from checks.audit_ip_pcap import audit
+            evidence['independent_pcap']=audit(result)
+    elif job['kind']=='rf':
         from checks.check_rf_research import check
+        evidence=check(result)
+    elif job['kind']=='rf_attack':
+        from checks.check_rf import verify as check
+        evidence=check(result)
+        from datasets.export_rf_detection import export
+        export(result,attempt/'attack-family-data',fraction=.2,modes=('fgsm','pgd'),psr_db=-10.,steps=30,seed=job['seeds'][0]+5000000)
+        save(attempt/'attack-family-data/prediction-contract.json',dict(primary_target='attack_type',classes=['none','fgsm','pgd'],binary_label_is_secondary=True,victim_task_is_not_attack_type=True,scope='Receiver-input reference only; known victim models/methods; not unseen-model or OTA proof'))
+    else:
+        from checks.check_training_attacks import verify as check
         evidence=check(result)
     save(attempt/'verification.json',evidence)
     files={p.relative_to(attempt).as_posix():sha(p) for p in sorted(attempt.rglob('*')) if p.is_file() and p not in (attempt/'worker.log',attempt/'receipt.json')}
@@ -169,6 +204,11 @@ def resources_ok(plan):
     values={line.split(':')[0]:line.split(':')[1].strip() for line in Path('/proc/meminfo').read_text().splitlines()}
     if int(values['MemAvailable'].split()[0])*1024<plan['minimum_available_ram_gib']*1024**3:return 'available_ram'
     if shutil.disk_usage(STORE).free<plan['minimum_free_gib']*1024**3:return 'free_disk'
+    if plan.get('maximum_output_gib'):
+        if time.time()-plan.get('last_growth_check_epoch',0)>30:
+            plan['measured_output_bytes']=sum(p.stat().st_size for p in Path(plan['output_root']).rglob('*') if p.is_file() and not p.is_symlink())
+            plan['last_growth_check_epoch']=time.time()
+        if plan.get('measured_output_bytes',0)>plan['maximum_output_gib']*1024**3:return 'campaign_growth'
     return None
 
 
@@ -231,12 +271,14 @@ def run(root):
                 pending=[j for j in plan['jobs'] if j['state']!='complete' and j['id'] not in attempted]
                 if not pending and not active:
                     stop='complete' if all(j['state']=='complete' for j in plan['jobs']) else 'incomplete';break
-                phases=('pilot-1','pilot-2','pilot-4','rf-development','ip-expanded-development')
+                phases=('pilot-1','pilot-2','pilot-4','rf-development','ip-expanded-development','collection')
                 unfinished=[j for j in plan['jobs'] if j['state']!='complete']
                 phase=next((p for p in phases if any(j['phase']==p for j in unfinished)),None)
                 if phase and any(j['state']=='failed' and j['phase']==phase and j['id'] in attempted for j in plan['jobs']) and not active:
                     stop='incomplete';break
-                candidates=[j for j in pending if j['phase']==phase]
+                complete_ids={j['id'] for j in plan['jobs'] if j['state']=='complete'}
+                candidates=[j for j in pending if j['phase']==phase and set(j.get('depends',[])).issubset(complete_ids)]
+                if not candidates and not active and pending:stop='dependency_blocked';break
                 capacity=min(plan['workers'],candidates[0]['capacity']) if candidates else plan['workers']
                 for cpu in plan['cpus']:
                     if cpu in active or len(active)>=capacity or not candidates:continue
@@ -268,7 +310,7 @@ def run(root):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--resume',type=Path);p.add_argument('--scenario',type=Path);p.add_argument('--ns3',type=Path)
-    p.add_argument('--output-root',type=Path,default=STORE/'results/research-campaigns');p.add_argument('--workers',type=int,choices=(1,2,4),default=4);p.add_argument('--prepare-only',action='store_true');p.add_argument('--job');p.add_argument('--attempt',type=Path);p.add_argument('--development-seeds',nargs='*',type=int,default=[]);p.add_argument('--expanded-only',action='store_true')
+    p.add_argument('--output-root',type=Path,default=STORE/'results/research-campaigns');p.add_argument('--workers',type=int,choices=(1,2,4),default=4);p.add_argument('--prepare-only',action='store_true');p.add_argument('--job');p.add_argument('--attempt',type=Path);p.add_argument('--development-seeds',nargs='*',type=int,default=[]);p.add_argument('--expanded-only',action='store_true');p.add_argument('--collection',action='store_true')
     args=p.parse_args(argv)
     if len(set(args.development_seeds))!=len(args.development_seeds) or any(s<=0 or s>2147483647 for s in args.development_seeds):p.error('Distinct positive development seeds required')
     if args.expanded_only and not args.development_seeds:p.error('--expanded-only needs development seeds')

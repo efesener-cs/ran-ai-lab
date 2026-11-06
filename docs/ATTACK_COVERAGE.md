@@ -29,17 +29,16 @@ KPM manipulation and classical wired traffic are distinct interventions.
 
 ## Correct target design
 
-Current implemented IP model target: **observed malicious activity0/1**. Attack
-families already exist as audit truth but have not yet been used as the model's
-categorical/multilabel target. This must not be described as a completed attack
-identification model.
-
-Next IP target: six binary family heads for UDP flood, UDP DDoS, pulsed UDP,
-port probing, TCP connection churn and ICMP flood. Normal is all heads zero.
-Multiple active families retain multiple labels. Report a normal+six-family
-categorical score on single-family cases and a full multilabel score including
-mixtures, with exact excluded/retained counts. Preserve binary detection as a
-secondary comparison; do not conceal mixtures under one arbitrary family.
+Current IP target uses six binary family heads: UDP flood, UDP DDoS, pulsed
+UDP, port probing, TCP connection churn and ICMP flood. Normal is all heads zero;
+mixtures retain multiple labels. A corrected development fit uses strictly disjoint
+training/validation/test/OOD groups. Its held-out macro-F1 is 0.244 (OOD 0.081);
+these exploratory figures do not establish final dataset quality. The earlier
+binary model remains an auxiliary comparison. The offline production campaign
+collects a larger preregistered matrix, then automatically fits categorical models.
+RF attack-method classification is separate, per victim task, over none/FGSM/PGD
+reference records and seven observed IQ moments; it is not evidence of all report
+families or over-the-air robustness.
 
 Across the whole project, keep domain, attack stage/family/method, victim task,
 knowledge, objective and impact as separate axes. Evasion, adversarial RL and
