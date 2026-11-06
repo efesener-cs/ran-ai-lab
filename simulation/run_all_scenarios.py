@@ -36,7 +36,7 @@ def parser():
     p.add_argument('--container', default='ran-lab')
     p.add_argument('--scenario-dir', type=Path, default=ROOT/'examples/scenarios')
     p.add_argument('--output-root', type=Path, default=ROOT/'results/all-scenarios')
-    p.add_argument('--only', choices=['all', 'rf', 'ip'], default='all')
+    p.add_argument('--only', choices=['all', 'rf', 'ip', 'training'], default='all')
     p.add_argument('--ns3', type=Path, help='Explicit SDK path in the selected environment')
     p.add_argument('--prepared-sdk', type=Path, help='Host prebuilt SDK to stage into Docker')
     p.add_argument('--seeds', type=int, nargs=3, default=[11, 23, 37])
@@ -57,8 +57,10 @@ def main(argv=None):
     if min(a.rf_train_samples, a.rf_eval_samples) < 60 or min(a.rf_epochs, a.rf_steps) < 1 or not 8 <= a.ip_duration <= 7200:
         p.error('invalid sample count, epochs/steps or duration')
     inputs = {}
-    if a.only in ('all', 'rf'):
+    if a.only in ('all', 'rf', 'training'):
         inputs['rf'] = a.scenario_dir.resolve()/'rf-ai-frames.cc'
+    if a.only in ('all', 'training'):
+        inputs['training'] = a.scenario_dir.resolve()/'training-data-attacks.cc'
     if a.only in ('all', 'ip'):
         inputs['ip'] = a.scenario_dir.resolve()/'ip-network-attacks.cc'
     for path in inputs.values():

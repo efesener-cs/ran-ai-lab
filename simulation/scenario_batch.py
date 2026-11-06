@@ -183,7 +183,7 @@ class Batch:
         return [sys.executable, str(ROOT/'lab.py'), name, *map(str,args)]
 
     def ensure_numpy(self):
-        needs_numpy = self.config['only'] in ('all','rf')
+        needs_numpy = self.config['only'] in ('all','rf','training')
         if needs_numpy and importlib.util.find_spec('numpy') is None:
             target = self.root/'python-deps'
             if not self.run('numpy-install', [sys.executable,'-m','pip','install','--target',str(target),'numpy>=1.24,<3']):
@@ -215,9 +215,9 @@ class Batch:
             return candidate
         raise RuntimeError('No compatible prebuilt ns-3 SDK; see sdk-candidate logs (no rebuild attempted)')
 
-    def rf(self):
+    def rf(self, profiles=RF_PROFILES):
         c = self.config
-        for profile in RF_PROFILES:
+        for profile in profiles:
             folder = self.root/'rf'/profile
             name = 'rf-'+profile
             command = self.cli('run_rf','--scenario',c['rf_scenario'],'--output',folder,
@@ -232,6 +232,20 @@ class Batch:
                          self.root/'datasets/rf'/profile,'--attack-fraction','.2','--psr-db','-10'))
             else:
                 self.skip(name+'-dataset', 'RF verification failed')
+
+    def training(self):
+        ready = any(t['name']=='rf-diverse-check' and t['state']=='completed' for t in self.summary['tasks'])
+        if not ready:
+            self.skip('training-attacks','Verified diverse RF data is unavailable')
+            return
+        folder = self.root/'training-attacks'
+        command = self.cli('run_training_attacks','--rf-run',self.root/'rf/diverse',
+                           '--scenario',self.config['training_scenario'],'--output',folder,
+                           '--epochs',self.config['rf_epochs'])
+        if self.run('training-attacks',command):
+            self.run('training-attacks-check',self.cli('check_training_attacks',folder))
+        else:
+            self.skip('training-attacks-check','Training study failed')
 
     def ip(self):
         c = self.config
@@ -288,6 +302,8 @@ def main(argv=None):
     try:
         batch.ensure_numpy()
         if config['only'] in ('all','rf'): batch.rf()
+        if config['only']=='training': batch.rf(('diverse',))
+        if config['only'] in ('all','training'): batch.training()
         if config['only'] in ('all','ip'): batch.ip()
         failures = any(t['state'] in ('failed','skipped') for t in batch.summary['tasks']) or bool(batch.summary.get('ip_error'))
         code = 1 if failures else 0

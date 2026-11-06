@@ -1,0 +1,112 @@
+{
+  "schema_version": "0.1-draft",
+  "status": "preparation_only_not_upload_ready",
+  "execution_approved": false,
+  "publication_approved": false,
+  "required_user_decisions": ["benchmark_scope", "execution_budget", "pilot_approval", "full_campaign_approval", "data_license", "kaggle_owner_and_slug"],
+  "global_rules": {
+    "different_domains_are_separate_tables": true,
+    "unknown_evidence_remains_null": true,
+    "random_noise_is_not_automatically_malicious": true,
+    "failed_attack_is_still_attack_when_applied": true,
+    "training_poison_label_is_not_test_input_attack_label": true,
+    "split_before_sampling": true,
+    "train_only_balancing": true,
+    "all_variants_of_source_group_share_split": true,
+    "canonical_iq_dtype": "float64",
+    "array_pickle_allowed": false,
+    "paths_relative_to_package": true,
+    "public_paths_may_contain_home_directory": false
+  },
+  "legacy_label_mapping": {
+    "raw_rf_csv.label": "true_task_label",
+    "rf_detection_csv.label": "attack_applied",
+    "rf_physical_sidecar.label": "attack_applied",
+    "ip_windows.label": "attack_applied",
+    "training_condition_csv.label": "training_target",
+    "training_audit.clean_label": "true_task_label",
+    "training_audit.training_label": "training_target",
+    "training_audit.selected": "selected_for_transformation_not_automatically_training_poison"
+  },
+  "tables": {
+    "rf_samples": {
+      "row_unit": "unique original RF frame",
+      "primary_key": ["sample_id"],
+      "group_key": "source_group_id",
+      "feature_columns": [],
+      "target_columns": ["true_task_label", "true_h_real", "true_h_imag"],
+      "required_columns": ["sample_id", "source_group_id", "source_frame_id", "task", "data_seed", "context_id", "clean_iq_path", "clean_iq_row", "complex_length", "source_run_id"]
+    },
+    "rf_observations": {
+      "row_unit": "one observed RF input for a source frame, method, budget and victim",
+      "primary_key": ["observation_id"],
+      "foreign_keys": {"sample_id": "rf_samples.sample_id", "victim_model_id": "models.model_id"},
+      "feature_columns": ["mean_i", "mean_q", "mean_i2", "mean_q2", "mean_i4", "mean_q4", "mean_iq"],
+      "raw_feature_reference": ["observed_iq_path", "observed_iq_row"],
+      "target_columns": ["attack_applied"],
+      "audit_only_columns": ["sample_role", "attack_intended", "input_changed", "attack_family", "attack_method", "attack_stage", "attack_success", "budget_kind", "budget_value", "budget_unit", "constraint_norm", "actual_power_ratio", "l2_delta", "l2_ceiling", "victim_model_id", "context_id"],
+      "required_columns": ["observation_id", "sample_id", "source_group_id", "task", "sample_role", "attack_applied", "input_changed", "attack_method", "victim_model_id", "observed_iq_path", "observed_iq_row"],
+      "sample_role_values": ["clean", "attack", "benign_corruption_control", "zero_budget_control", "trigger_probe", "random_probe"]
+    },
+    "ip_windows": {
+      "row_unit": "run by closed post-warmup time window",
+      "primary_key": ["run_id", "window_index"],
+      "group_key": "source_group_id",
+      "feature_columns": ["tx_packets", "tx_ip_bytes", "server_rx_packets", "server_rx_ip_bytes", "bottleneck_queue_drops", "bottleneck_qdisc_drops", "udp_tx_packets", "tcp_tx_packets", "icmp_tx_packets", "tcp_syn_packets", "tcp_rst_packets", "tcp_fin_packets", "unique_src_ips", "unique_dst_ips", "unique_dst_ports", "dst_port_entropy", "server_app_rx_bytes", "mean_ip_delay_ms", "std_ip_delay_ms", "max_ip_delay_ms", "delay_samples"],
+      "target_columns": ["attack_applied"],
+      "audit_only_columns": ["attack_scheduled", "attack_family", "attack_families", "attack_tx_packets", "attack_rx_packets", "attack_drop_packets", "benign_rx_ip_bytes", "benign_app_rx_bytes", "seed", "run", "context_id", "window_start_s", "window_end_s"],
+      "required_columns": ["run_id", "source_group_id", "window_index", "window_start_s", "window_end_s", "attack_applied", "attack_scheduled", "attack_family", "context_id"],
+      "attack_success_policy": "null unless a predefined separately measured success criterion exists"
+    },
+    "training_row_audits": {
+      "row_unit": "source training or probe frame by condition",
+      "primary_key": ["condition_id", "sample_id"],
+      "group_key": "source_group_id",
+      "feature_columns": [],
+      "audit_only_table": true,
+      "required_columns": ["condition_id", "sample_id", "source_group_id", "dataset_role", "transformation", "selected", "is_poisoned_training_row", "true_task_label", "training_target", "input_changed", "trigger_present", "actual_power_ratio"],
+      "dataset_role_values": ["training", "clean_validation", "clean_test", "triggered_test_probe", "random_test_probe"],
+      "poison_label_rule": "selected AND dataset_role=training AND an observed label or IQ change under a declared poisoning transformation"
+    },
+    "training_model_outcomes": {
+      "row_unit": "trained model by condition and held-out evaluation set",
+      "primary_key": ["condition_id", "evaluation_id"],
+      "feature_columns": [],
+      "audit_only_table": true,
+      "required_columns": ["condition_id", "evaluation_id", "model_id", "reference_model_id", "task", "model_seed", "poison_fraction_requested", "poison_fraction_actual", "clean_accuracy", "clean_macro_f1", "reference_triggered_eligible", "reference_triggered_hits", "triggered_eligible", "triggered_hits", "conditional_backdoor_eligible", "conditional_backdoor_hits"],
+      "zero_denominator_rule": "rate is null; numerator and denominator remain explicit"
+    },
+    "runs": {
+      "row_unit": "one attempted scientific job",
+      "primary_key": ["run_id"],
+      "feature_columns": [],
+      "audit_only_table": true,
+      "required_columns": ["run_id", "domain", "scenario_sha256", "runtime_sha256", "context_id", "state", "data_seed", "model_seed", "attack_seed", "attempt_index", "backend", "verification_state"],
+      "state_values": ["pending", "running", "completed", "failed", "timeout", "cancelled", "resource_limited"],
+      "failed_attempts_are_retained": true
+    },
+    "models": {
+      "row_unit": "one frozen fitted model",
+      "primary_key": ["model_id"],
+      "feature_columns": [],
+      "audit_only_table": true,
+      "required_columns": ["model_id", "model_sha256", "architecture", "task", "model_seed", "training_group_ids", "validation_group_ids", "selection_rule", "trained_on_poisoned_data"]
+    }
+  },
+  "split_manifest": {
+    "required_fields": ["benchmark_track", "train_group_ids", "validation_group_ids", "test_group_ids", "train_context_allowlist", "validation_context_allowlist", "test_context_allowlist", "feature_columns", "target_columns", "sampling_policy"],
+    "groups_disjoint_between_splits": true,
+    "heldout_ood_context_absent_from_train_and_validation": true,
+    "same_raw_row_can_have_different_roles_between_tracks": "only with explicit track-relative manifests; never merge tracks before splitting"
+  },
+  "release_gate": {
+    "required_artifacts": ["README.md", "DATASET_CARD.md", "DATA_DICTIONARY.csv", "CITATION.bib", "LICENSE.txt", "versions.json", "checksums.sha256", "dataset-metadata.json", "splits/id.json", "notebooks/01_load_and_validate.ipynb"],
+    "metadata_requires_chosen_license_and_owner": true,
+    "raw_and_normalized_counts_must_reconcile": true,
+    "sample_and_array_foreign_keys_must_resolve": true,
+    "models_and_metrics_must_be_independently_recomputed": true,
+    "source_group_and_context_leakage_must_be_checked": true,
+    "data_card_must_state_synthetic_origin_and_unsupported_claims": true,
+    "automatic_upload": false
+  }
+}

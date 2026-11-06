@@ -105,3 +105,47 @@ bash run-all-scenarios.sh --seeds 41 53 67 --ip-duration 300
 and duration settings. `--backend host` selects a host SDK and runs no Docker
 commands. `--help` lists the remaining sample/epoch/step settings. Alternate
 scenario directories must implement the documented v2 CSV/label interfaces.
+# Resumable two-core research campaign
+
+`collect_campaign --resume PATH` is the existing telemetry matched-suite
+continuation command. It preserves attempts and skips completed suites, but does
+not collect the RF/IP/training matrix. Do not apply it to an all-scenarios output
+or replace a historical campaign's configuration.
+
+For the explicitly approved RF/IP/training matrix:
+
+```bash
+python3 lab.py run_benchmark --prepare-only --ns3 /path/to/built/native-ns3
+python3 lab.py run_benchmark --resume results/benchmark/run-TIMESTAMP-SUFFIX
+```
+
+Preparation captures an immutable runtime, unchanged C++ inputs, the machine
+proposal, and a private relocated prebuilt SDK. Resume re-executes that captured
+runtime, validates hashes, checks completed artifact receipts and retains each
+failed/interrupted attempt. One controller holds an exclusive campaign lock.
+Each worker has a private working/output directory and a separate process group.
+The shared dependencies and historical results are not modified.
+
+The approved configuration uses two distinct physical CPU cores, at most two
+workers, and one BLAS/OpenMP thread per worker. Eight matched pilot simulations
+compare four workloads at concurrency one and two. Their window CSV hashes must
+agree before confirmatory collection. The queue includes 60 RF blocks, five
+26-condition poisoning/backdoor studies, and 600 IP runs. RF and training studies
+run their independent checkers; IP rows, labels, metadata and context are checked.
+Completed means collected and checked within this scope, not a finished Kaggle
+release or live RAN acceptance.
+
+The wall deadline is 18 hours from the first queue execution; resume does not
+reset it. Memory/disk limits are polled at ten-second intervals: 3 GiB available
+RAM minimum, 5 GiB summed worker-process RSS ceiling, 20 GiB free disk minimum,
+25 GiB campaign file-size ceiling. These are monitored limits, not kernel cgroup
+quotas; a short sampling overshoot is possible. CPU affinity bounds every worker
+and its children. At timeout/resource pressure/interrupt the controller stops
+only its own process groups and preserves partial attempts. A resume after budget
+expiry is rejected, rather than silently granting another 18 hours.
+
+`campaign.json` records current state, per-job attempts/log paths, CPU assignments,
+timings, hashes and the deadline. Job logs live at
+`jobs/JOB_ID/attempt-N/job.log`. Reuse the exact output path printed by preparation
+when continuing; new collection never deletes an earlier run. Kaggle packaging,
+licensing and publication remain separate release gates.
