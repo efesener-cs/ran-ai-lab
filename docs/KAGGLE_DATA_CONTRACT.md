@@ -40,6 +40,28 @@ checksums and a loader notebook. Until the owner/slug and data license are chose
 publication pending. No fictitious license or upload-ready metadata is generated.
 Generated data/archives stay under ignored `exports/` and must not enter Git.
 
+## Random Forest IP baseline
+
+`python3 -m ai.ip_random_forest PACKAGE --output results/baselines/NAME` trains
+one reproducible RandomForestClassifier on the package's 720,000 train windows.
+Install NumPy, pandas, scikit-learn and joblib in the selected Python environment.
+The model uses only the 21 measured-feature whitelist columns, 200 trees, depth
+20, minimum leaf size 5, 70% bootstrap samples, balanced subsample class weights,
+seed 20261106 and two parallel jobs. These settings are fixed before test access.
+A threshold is selected by maximum validation F1 over 19 predeclared thresholds
+from .05 to .95; ties prefer the highest threshold. No test rows enter training,
+threshold selection or balancing. The 720,000-row test is evaluated once after
+selection and includes per-family/per-run metrics and a constant-clean dummy.
+
+Outputs include a versioned joblib artifact, source hashes, test predictions,
+metrics, feature importance, configuration, and verified serialization roundtrip.
+Average precision is reported explicitly (not conflated with trapezoidal PR-AUC).
+The baseline concerns observed wired-IP attack activity only; it says nothing
+about RF task accuracy, unseen-family detection or live RAN attack detection.
+All windows with the same seed/run remain together across modes and contexts;
+adjacent windows are correlated, so no independent-window confidence intervals
+are claimed. Source CSVs and canonical float64 RF arrays remain unchanged.
+
 ## Labels have different meanings
 
 The original RF CSV's `label` is an occupancy/modulation target. RF detector CSV

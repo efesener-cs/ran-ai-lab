@@ -131,9 +131,32 @@ def verify(root):
                     if name=='delta' and array.dtype!=np.float64:
                         raise ValueError('Canonical perturbation precision changed')
                     arrays+=1
+    baseline=root/'baselines/ip_random_forest'
+    baseline_checked=False
+    if baseline.exists():
+        metrics=json.loads((baseline/'metrics.json').read_text())
+        manifest=json.loads((baseline/'model-manifest.json').read_text())
+        if digest(baseline/'random_forest.joblib')!=manifest['model_sha256'] or digest(baseline/'test_predictions.csv.gz')!=manifest['predictions_sha256']:
+            raise ValueError('Baseline artifact hash mismatch')
+        if metrics['feature_columns']!=split['feature_columns'] or not manifest['serialization_roundtrip_verified']:
+            raise ValueError('Baseline feature/serialization mismatch')
+        for role in ('train','validation','test'):
+            if digest(root/split['table_paths'][role])!=metrics['source_sha256'][role]:
+                raise ValueError('Baseline used different source data')
+        confusion=[[0,0],[0,0]];n=0
+        with gzip.open(baseline/'test_predictions.csv.gz','rt',newline='') as handle:
+            for row in csv.DictReader(handle):
+                actual=int(row['attack_applied']);prediction=int(row['predicted_attack'])
+                if actual not in (0,1) or prediction!=int(float(row['attack_probability'])>=metrics['test']['threshold']):
+                    raise ValueError('Baseline prediction threshold mismatch')
+                confusion[actual][prediction]+=1;n+=1
+        if n!=split['counts']['test']['rows'] or confusion!=metrics['test']['confusion_matrix']:
+            raise ValueError('Baseline test metric reconciliation failed')
+        baseline_checked=True
     status=json.loads((root/'publication-status.json').read_text())
     return dict(integrity_verified=True,ip_rows=total,ip_positives=positives,jobs=index['jobs'],
                 files=len(inventory),npz_arrays_checked=arrays,numpy_available=np is not None,
+                baseline_checked=baseline_checked,
                 metadata_ready=status['metadata_ready'],scientific_metrics_recomputed=False)
 
 
