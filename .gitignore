@@ -5,6 +5,7 @@
 host-build/
 validation/
 results/
+/results
 ran-ai-offline
 ran-ai-live
 *.o
@@ -19,6 +20,7 @@ report.md
 reports/
 result/
 exports/
+/exports
 *.log
 *.pcap
 *.pcapng

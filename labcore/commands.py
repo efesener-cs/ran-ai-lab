@@ -22,6 +22,7 @@ COMMANDS = {
     'run_rf': 'simulation.run_rf',
     'run_all_scenarios': 'simulation.run_all_scenarios',
     'run_benchmark': 'simulation.run_benchmark',
+    'run_research_campaign': 'simulation.run_research_campaign',
     'package_benchmark': 'datasets.package_benchmark',
     'check_measured_package': 'checks.check_measured_package',
     'run_batch_worker': 'simulation.scenario_batch',
