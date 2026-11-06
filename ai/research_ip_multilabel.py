@@ -496,12 +496,9 @@ def calibrate_thresholds(models, store, np, batch_size=25000):
     for start in range(0, Y.shape[0], batch_size):
         end = min(Y.shape[0], start + batch_size)
         truth = np.asarray(Y[start:end], dtype=np.uint8)
-        probabilities = _probability_batch(models, X[start:end], np)
         for index, family in enumerate(FAMILIES):
             actual = truth[:, index].astype(bool)
             positives = int(actual.sum())
-            if not positives:
-                raise ValueError('Validation has no positive examples for ' + family)
             # Accumulating this first is sufficient to establish global negatives.
             totals[index][0] += positives
             totals[index][1] += len(actual) - positives

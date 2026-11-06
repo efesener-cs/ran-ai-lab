@@ -154,6 +154,24 @@ class ResearchIpMultilabelTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'file hash mismatch'):
                 multilabel.index_campaign(root, splits)
 
+    def test_calibration_support_is_global_across_batches(self):
+        import numpy as np
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            X = np.zeros((4, len(multilabel.FEATURES)))
+            Y = np.asarray([[0] * 6, [0] * 6, [1] * 6, [1] * 6], dtype=np.uint8)
+            np.save(root / 'X.npy', X)
+            np.save(root / 'Y.npy', Y)
+            store = {'X_path': root / 'X.npy', 'Y_path': root / 'Y.npy'}
+            with patch.object(multilabel, '_probability_batch', return_value=np.full((2, 6), .5)):
+                thresholds, evidence = multilabel.calibrate_thresholds([], store, np, batch_size=2)
+            self.assertEqual(set(thresholds), set(multilabel.FAMILIES))
+            Y[:] = 0
+            np.save(root / 'Y.npy', Y)
+            with self.assertRaisesRegex(ValueError, 'positive and negative'):
+                multilabel.calibrate_thresholds([], store, np, batch_size=2)
+
     def test_training_spool_and_selection_are_split_isolated_with_sentinel_rows(self):
         import numpy as np
 
