@@ -15,6 +15,54 @@ paper reproduction, live DRL/RIC control or OTA validation is made by the curren
 RF/IP examples. The user's approval covers this bounded RF/IP/training collection.
 Upload/publication requires a separate explicit instruction.
 
+## Quality gate after the first IP baseline
+
+The completed first collection is a **prototype**, not an accepted difficult
+benchmark. A fixed Random Forest scored test F1 0.999144 on held-out seeds.
+Exploratory checks after viewing that test found a depth-3 decision tree F1 of
+0.977074 and depth-5 F1 of 0.996603. All 596,078 negative test windows had zero
+ICMP TX and zero TCP SYN; benign destination-port cardinality never exceeded 4.
+There were no matching train/test feature-vector hashes in a numeric duplicate
+screen. The held-out seeds still use the same small/medium/large context recipes.
+These observations support generator-specific shortcuts, not a conclusion that
+randomness is entirely absent or that performance generalizes to live traffic.
+The test has now been inspected diagnostically; it must not be reused as a blind
+confirmatory holdout for a redesigned generator.
+
+Reproduce this exploratory screen with `python3 -m checks.audit_ip_shortcuts
+PACKAGE --output results/quality/ip-shortcuts.json` in an environment with
+NumPy, pandas and scikit-learn. Original results and the first baseline remain
+unchanged. Do not remove legitimate network features merely to force a lower
+score, change true labels, or inject arbitrary noise to manufacture difficulty.
+
+### Requirements for a revised confirmatory collection
+
+1. Include legitimate ICMP diagnostics, short-lived TCP sessions, service
+   discovery, high fanout, bulk transfers, flash crowds and non-malicious queue
+   congestion. These must be independently generated benign behavior, not attacks
+   relabeled as clean. Establish their application intent in the generator audit.
+2. Vary packet sizes, destinations, connection lifetimes, burst timing, episode
+   duration, concurrent services and offered rates. Benign and malicious rate
+   distributions must overlap; include low-rate and intermittent attack cases.
+   Shared nuisance parameters must be sampled independently of class and reused
+   for paired clean/attack comparisons. Keep physical constraints and evidence.
+3. Sample client/server counts, link capacity/delay/queue sizes and traffic mixes
+   from documented distributions rather than only three fixed correlated recipes.
+   Preserve exact seeds, realized parameters and application-grounded labels.
+4. Predeclare ID evaluation plus held-out workload/topology/rate-regime tests,
+   and a separate unseen-family track. Split at scenario/seed group level before
+   producing windows. Keep model selection and thresholds off every blind test.
+5. Run shallow rules/trees, Random Forest and per-family negative-control checks
+   on a small development pilot. Investigate deterministic class-specific protocol
+   absence, port limits and overload shortcuts. High scores alone are not a failure
+   criterion; realistic overlap, labeling evidence and generalization are.
+6. Freeze a new immutable version and fresh holdout seeds before full collection.
+   Report the original prototype separately, and retain negative/failed cases.
+   Resource approval remains two CPU workers with safeguards. The user's removed
+   RAN time limit does not authorize unbounded scope expansion or publication.
+
+No revised generator or v2 simulations have been executed by this quality audit.
+
 ## Coverage and evidence gates
 
 | Track | Existing implementation | Release boundary or work required |
