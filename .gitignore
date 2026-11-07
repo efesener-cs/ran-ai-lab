@@ -28,3 +28,6 @@ exports/
 /docs/STEP_[1-5].md
 /docs/POSTGRES_GRAFANA.md
 /examples/sample_application.csv
+
+# Generated local CSV releases and model evidence.
+/deliverables/
